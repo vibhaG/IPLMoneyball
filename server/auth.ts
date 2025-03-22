@@ -6,7 +6,7 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
-import { registrationSchema } from "@shared/schema";
+import { registrationSchema, loginSchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 
@@ -112,17 +112,27 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/login", (req, res, next) => {
-    passport.authenticate("local", (err, user, info) => {
-      if (err) return next(err);
-      if (!user) return res.status(401).json({ message: "Invalid credentials" });
+    try {
+      // Parse and validate the login data
+      const loginData = loginSchema.parse(req.body);
       
-      req.login(user, (err) => {
+      passport.authenticate("local", (err: any, user: any, info: any) => {
         if (err) return next(err);
-        // Don't send password back to client
-        const { password, ...userWithoutPassword } = user;
-        res.status(200).json(userWithoutPassword);
-      });
-    })(req, res, next);
+        if (!user) return res.status(401).json({ message: "Invalid credentials" });
+        
+        req.login(user, (err) => {
+          if (err) return next(err);
+          // Don't send password back to client
+          const { password, ...userWithoutPassword } = user;
+          res.status(200).json(userWithoutPassword);
+        });
+      })(req, res, next);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ message: fromZodError(error).message });
+      }
+      next(error);
+    }
   });
 
   app.post("/api/logout", (req, res, next) => {
