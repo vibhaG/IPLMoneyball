@@ -1,10 +1,13 @@
 import { MongoClient, Db, Collection, ObjectId } from "mongodb";
 import session from "express-session";
 import createMemoryStore from "memorystore";
+import connectPgSimple from "connect-pg-simple";
 import { User, Match, Bet, InsertUser, InsertMatch, InsertBet } from "@shared/schema";
+import { connectToDatabase } from "./db";
 
 const MemoryStore = createMemoryStore(session);
 
+// Interface for all storage operations
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -22,42 +25,83 @@ export interface IStorage {
   getUserBets(userId: number): Promise<Bet[]>;
   getMatchBets(matchId: number): Promise<Bet[]>;
   
-  sessionStore: session.SessionStore;
+  sessionStore: any;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private matches: Map<number, Match>;
-  private bets: Map<number, Bet>;
-  public sessionStore: session.SessionStore;
-  private currentUserId: number;
-  private currentMatchId: number;
-  private currentBetId: number;
+// MongoDB implementation of Storage
+export class MongoDBStorage implements IStorage {
+  private db: Db | null = null;
+  private users: Collection | null = null;
+  private matches: Collection | null = null;
+  private bets: Collection | null = null;
+  public sessionStore: any;
+  
+  private counters = {
+    userId: 0,
+    matchId: 0,
+    betId: 0
+  };
 
   constructor() {
-    this.users = new Map();
-    this.matches = new Map();
-    this.bets = new Map();
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000, // 24 hours
     });
-    this.currentUserId = 1;
-    this.currentMatchId = 1;
-    this.currentBetId = 1;
     
-    // Create initial admin user
-    this.createUser({
-      username: "admin",
-      password: "password", // Will be hashed in auth.ts
-      fullName: "Admin User",
-      role: "admin"
-    });
+    this.initialize();
+  }
+  
+  private async initialize() {
+    try {
+      this.db = await connectToDatabase();
+      
+      if (this.db) {
+        this.users = this.db.collection("users");
+        this.matches = this.db.collection("matches");
+        this.bets = this.db.collection("bets");
+        
+        // Initialize counters from existing data
+        await this.initializeCounters();
+        
+        // Create initial admin user if none exists
+        const adminUser = await this.getUserByUsername("admin");
+        if (!adminUser) {
+          await this.createUser({
+            username: "admin",
+            password: "password", // Will be hashed in auth.ts
+            fullName: "Admin User",
+            role: "admin"
+          });
+        }
+        
+        // Create sample matches if none exist
+        const matchCount = await this.matches?.countDocuments();
+        if (matchCount === 0) {
+          await this.createSampleMatches();
+        }
+      }
+    } catch (error) {
+      console.error("Failed to initialize MongoDB storage:", error);
+    }
+  }
+  
+  private async initializeCounters() {
+    const highestUser = await this.users?.find().sort({ id: -1 }).limit(1).toArray();
+    if (highestUser && highestUser.length > 0 && highestUser[0].id) {
+      this.counters.userId = highestUser[0].id;
+    }
     
-    // Create sample matches
-    this.createSampleMatches();
+    const highestMatch = await this.matches?.find().sort({ id: -1 }).limit(1).toArray();
+    if (highestMatch && highestMatch.length > 0 && highestMatch[0].id) {
+      this.counters.matchId = highestMatch[0].id;
+    }
+    
+    const highestBet = await this.bets?.find().sort({ id: -1 }).limit(1).toArray();
+    if (highestBet && highestBet.length > 0 && highestBet[0].id) {
+      this.counters.betId = highestBet[0].id;
+    }
   }
 
-  private createSampleMatches() {
+  private async createSampleMatches() {
     const teams = [
       { team1: "Mumbai Indians", team2: "Chennai Super Kings" },
       { team1: "Royal Challengers Bangalore", team2: "Delhi Capitals" },
@@ -85,7 +129,7 @@ export class MemStorage implements IStorage {
       const venueIndex = i % venues.length;
       const timeIndex = i % times.length;
       
-      this.createMatch({
+      await this.createMatch({
         team1: teams[teamIndex].team1,
         team2: teams[teamIndex].team2,
         venue: venues[venueIndex],
@@ -96,80 +140,109 @@ export class MemStorage implements IStorage {
   }
 
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    if (!this.users) return undefined;
+    const user = await this.users.findOne({ id });
+    return user ? user as User : undefined;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username.toLowerCase() === username.toLowerCase()
-    );
+    if (!this.users) return undefined;
+    const user = await this.users.findOne({ 
+      username: { $regex: new RegExp(`^${username}$`, 'i') } 
+    });
+    return user ? user as User : undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentUserId++;
-    const user: User = { ...insertUser, id, isActive: true };
-    this.users.set(id, user);
+    if (!this.users) throw new Error("Database connection not established");
+    
+    const id = ++this.counters.userId;
+    const user: User = { 
+      ...insertUser, 
+      id, 
+      isActive: true 
+    };
+    
+    await this.users.insertOne(user);
     return user;
   }
 
   async getAllUsers(): Promise<User[]> {
-    return Array.from(this.users.values());
+    if (!this.users) return [];
+    const usersList = await this.users.find().toArray();
+    return usersList as User[];
   }
 
   async updateUser(id: number, updates: Partial<User>): Promise<User | undefined> {
-    const user = await this.getUser(id);
-    if (!user) return undefined;
+    if (!this.users) return undefined;
     
-    const updatedUser = { ...user, ...updates };
-    this.users.set(id, updatedUser);
+    await this.users.updateOne({ id }, { $set: updates });
+    const updatedUser = await this.getUser(id);
     return updatedUser;
   }
 
   async deactivateUser(id: number): Promise<boolean> {
-    const user = await this.getUser(id);
-    if (!user) return false;
+    if (!this.users) return false;
     
-    user.isActive = false;
-    this.users.set(id, user);
-    return true;
+    const result = await this.users.updateOne({ id }, { $set: { isActive: false } });
+    return result.modifiedCount > 0;
   }
 
   async createMatch(insertMatch: InsertMatch): Promise<Match> {
-    const id = this.currentMatchId++;
+    if (!this.matches) throw new Error("Database connection not established");
+    
+    const id = ++this.counters.matchId;
     const match: Match = { ...insertMatch, id };
-    this.matches.set(id, match);
+    
+    await this.matches.insertOne(match);
     return match;
   }
 
   async getMatch(id: number): Promise<Match | undefined> {
-    return this.matches.get(id);
+    if (!this.matches) return undefined;
+    const match = await this.matches.findOne({ id });
+    return match ? match as Match : undefined;
   }
 
   async getAllMatches(): Promise<Match[]> {
-    return Array.from(this.matches.values());
+    if (!this.matches) return [];
+    const matchesList = await this.matches.find().toArray();
+    return matchesList as Match[];
   }
 
   async getUpcomingMatches(): Promise<Match[]> {
+    if (!this.matches) return [];
+    
     const now = new Date();
-    return Array.from(this.matches.values())
-      .filter(match => new Date(match.matchDate) > now)
-      .sort((a, b) => new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime());
+    const upcomingMatches = await this.matches
+      .find({ matchDate: { $gt: now } })
+      .sort({ matchDate: 1 })
+      .toArray();
+    
+    return upcomingMatches as Match[];
   }
 
   async createBet(insertBet: InsertBet): Promise<Bet> {
-    const id = this.currentBetId++;
+    if (!this.bets) throw new Error("Database connection not established");
+    
+    const id = ++this.counters.betId;
     const bet: Bet = { ...insertBet, id, createdAt: new Date() };
-    this.bets.set(id, bet);
+    
+    await this.bets.insertOne(bet);
     return bet;
   }
 
   async getUserBets(userId: number): Promise<Bet[]> {
-    return Array.from(this.bets.values()).filter(bet => bet.userId === userId);
+    if (!this.bets) return [];
+    const userBets = await this.bets.find({ userId }).toArray();
+    return userBets as Bet[];
   }
 
   async getMatchBets(matchId: number): Promise<Bet[]> {
-    return Array.from(this.bets.values()).filter(bet => bet.matchId === matchId);
+    if (!this.bets) return [];
+    const matchBets = await this.bets.find({ matchId }).toArray();
+    return matchBets as Bet[];
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new MongoDBStorage();

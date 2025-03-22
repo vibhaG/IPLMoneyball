@@ -1,60 +1,65 @@
-import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { ObjectId } from "mongodb";
 
-// User model
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  fullName: text("full_name").notNull(),
-  role: text("role").notNull().default("user"),
-  isActive: boolean("is_active").notNull().default(true),
+// User model schema
+export const userSchema = z.object({
+  _id: z.instanceof(ObjectId).optional(),
+  id: z.number().optional(),
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(1, "Password is required"),
+  fullName: z.string().min(1, "Full name is required"),
+  role: z.string().default("user"),
+  isActive: z.boolean().default(true),
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({
+export const insertUserSchema = userSchema.omit({
+  _id: true,
   id: true,
   isActive: true,
 });
 
-// Match model
-export const matches = pgTable("matches", {
-  id: serial("id").primaryKey(),
-  team1: text("team1").notNull(),
-  team2: text("team2").notNull(),
-  venue: text("venue").notNull(),
-  matchDate: timestamp("match_date").notNull(),
-  time: text("time").notNull(),
+// Match model schema
+export const matchSchema = z.object({
+  _id: z.instanceof(ObjectId).optional(),
+  id: z.number().optional(),
+  team1: z.string().min(1, "Team 1 is required"),
+  team2: z.string().min(1, "Team 2 is required"),
+  venue: z.string().min(1, "Venue is required"),
+  matchDate: z.date(),
+  time: z.string().min(1, "Time is required"),
 });
 
-export const insertMatchSchema = createInsertSchema(matches).omit({
+export const insertMatchSchema = matchSchema.omit({
+  _id: true,
   id: true,
 });
 
-// Bet model
-export const bets = pgTable("bets", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  matchId: integer("match_id").notNull(),
-  selectedTeam: text("selected_team").notNull(),
-  amount: integer("amount").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+// Bet model schema
+export const betSchema = z.object({
+  _id: z.instanceof(ObjectId).optional(),
+  id: z.number().optional(),
+  userId: z.number(),
+  matchId: z.number(),
+  selectedTeam: z.string().min(1, "Selected team is required"),
+  amount: z.number().positive("Amount must be positive"),
+  createdAt: z.date().default(() => new Date()),
 });
 
-export const insertBetSchema = createInsertSchema(bets).omit({
+export const insertBetSchema = betSchema.omit({
+  _id: true,
   id: true,
   createdAt: true,
 });
 
 // Data types
 export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+export type User = z.infer<typeof userSchema>;
 
 export type InsertMatch = z.infer<typeof insertMatchSchema>;
-export type Match = typeof matches.$inferSelect;
+export type Match = z.infer<typeof matchSchema>;
 
 export type InsertBet = z.infer<typeof insertBetSchema>;
-export type Bet = typeof bets.$inferSelect;
+export type Bet = z.infer<typeof betSchema>;
 
 // Registration schema with validation
 export const registrationSchema = insertUserSchema.extend({
