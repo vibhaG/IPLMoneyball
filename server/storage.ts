@@ -535,12 +535,10 @@ const mongoStorage = new MongoDBStorage();
 // Create memory storage as fallback
 const memStorage = new MemStorage();
 
-// Use MongoDB storage if available, otherwise fall back to in-memory
-// Try to use MongoDB storage, but fall back to in-memory storage if MongoDB fails
-export const storage: IStorage = process.env.MONGODB_URI ? mongoStorage : memStorage;
+// Initialize storage with proper connection check
+export const storage: IStorage = await initializeStorage();
 
-// This approach ensures we always have a working storage implementation,
-// even if MongoDB connection fails
+// This ensures we have a working storage implementation after checking the connection
 async function initializeStorage() {
   try {
     if (process.env.MONGODB_URI) {
