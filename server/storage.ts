@@ -151,7 +151,16 @@ export class MongoDBStorage implements IStorage {
   async getUser(id: number): Promise<User | undefined> {
     if (!this.users) return undefined;
     const user = await this.users.findOne({ id });
-    return user ? user as User : undefined;
+    if (!user) return undefined;
+    // Convert MongoDB document to User type
+    return {
+      id: user.id,
+      username: user.username,
+      password: user.password,
+      fullName: user.fullName,
+      role: user.role,
+      isActive: user.isActive
+    };
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
@@ -159,7 +168,16 @@ export class MongoDBStorage implements IStorage {
     const user = await this.users.findOne({ 
       username: { $regex: new RegExp(`^${username}$`, 'i') } 
     });
-    return user ? user as User : undefined;
+    if (!user) return undefined;
+    // Convert MongoDB document to User type
+    return {
+      id: user.id,
+      username: user.username,
+      password: user.password,
+      fullName: user.fullName,
+      role: user.role,
+      isActive: user.isActive
+    };
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
@@ -172,14 +190,33 @@ export class MongoDBStorage implements IStorage {
       isActive: true 
     };
     
-    await this.users.insertOne(user);
+    // Convert to plain object before inserting to avoid _id conflicts
+    const userDoc = {
+      id: user.id,
+      username: user.username,
+      password: user.password,
+      fullName: user.fullName,
+      role: user.role,
+      isActive: user.isActive
+    };
+    
+    await this.users.insertOne(userDoc);
     return user;
   }
 
   async getAllUsers(): Promise<User[]> {
     if (!this.users) return [];
     const usersList = await this.users.find().toArray();
-    return usersList as User[];
+    
+    // Convert MongoDB documents to User types
+    return usersList.map(user => ({
+      id: user.id,
+      username: user.username,
+      password: user.password,
+      fullName: user.fullName,
+      role: user.role,
+      isActive: user.isActive
+    }));
   }
 
   async updateUser(id: number, updates: Partial<User>): Promise<User | undefined> {
@@ -203,20 +240,49 @@ export class MongoDBStorage implements IStorage {
     const id = ++this.counters.matchId;
     const match: Match = { ...insertMatch, id };
     
-    await this.matches.insertOne(match);
+    // Convert to plain object before inserting
+    const matchDoc = {
+      id: match.id,
+      team1: match.team1,
+      team2: match.team2,
+      venue: match.venue,
+      matchDate: match.matchDate,
+      time: match.time
+    };
+    
+    await this.matches.insertOne(matchDoc);
     return match;
   }
 
   async getMatch(id: number): Promise<Match | undefined> {
     if (!this.matches) return undefined;
     const match = await this.matches.findOne({ id });
-    return match ? match as Match : undefined;
+    if (!match) return undefined;
+    
+    // Convert MongoDB document to Match type
+    return {
+      id: match.id,
+      team1: match.team1,
+      team2: match.team2,
+      venue: match.venue,
+      matchDate: match.matchDate,
+      time: match.time
+    };
   }
 
   async getAllMatches(): Promise<Match[]> {
     if (!this.matches) return [];
     const matchesList = await this.matches.find().toArray();
-    return matchesList as Match[];
+    
+    // Convert MongoDB documents to Match types
+    return matchesList.map(match => ({
+      id: match.id,
+      team1: match.team1,
+      team2: match.team2,
+      venue: match.venue,
+      matchDate: match.matchDate,
+      time: match.time
+    }));
   }
 
   async getUpcomingMatches(): Promise<Match[]> {
@@ -228,7 +294,15 @@ export class MongoDBStorage implements IStorage {
       .sort({ matchDate: 1 })
       .toArray();
     
-    return upcomingMatches as Match[];
+    // Convert MongoDB documents to Match types
+    return upcomingMatches.map(match => ({
+      id: match.id,
+      team1: match.team1,
+      team2: match.team2,
+      venue: match.venue,
+      matchDate: match.matchDate,
+      time: match.time
+    }));
   }
 
   async createBet(insertBet: InsertBet): Promise<Bet> {
@@ -237,20 +311,48 @@ export class MongoDBStorage implements IStorage {
     const id = ++this.counters.betId;
     const bet: Bet = { ...insertBet, id, createdAt: new Date() };
     
-    await this.bets.insertOne(bet);
+    // Convert to plain object before inserting
+    const betDoc = {
+      id: bet.id,
+      userId: bet.userId,
+      matchId: bet.matchId,
+      selectedTeam: bet.selectedTeam,
+      amount: bet.amount,
+      createdAt: bet.createdAt
+    };
+    
+    await this.bets.insertOne(betDoc);
     return bet;
   }
 
   async getUserBets(userId: number): Promise<Bet[]> {
     if (!this.bets) return [];
     const userBets = await this.bets.find({ userId }).toArray();
-    return userBets as Bet[];
+    
+    // Convert MongoDB documents to Bet types
+    return userBets.map(bet => ({
+      id: bet.id,
+      userId: bet.userId,
+      matchId: bet.matchId,
+      selectedTeam: bet.selectedTeam,
+      amount: bet.amount,
+      createdAt: bet.createdAt
+    }));
   }
 
   async getMatchBets(matchId: number): Promise<Bet[]> {
     if (!this.bets) return [];
     const matchBets = await this.bets.find({ matchId }).toArray();
-    return matchBets as Bet[];
+    
+    // Convert MongoDB documents to Bet types
+    return matchBets.map(bet => ({
+      id: bet.id,
+      userId: bet.userId,
+      matchId: bet.matchId,
+      selectedTeam: bet.selectedTeam,
+      amount: bet.amount,
+      createdAt: bet.createdAt
+    }));
   }
 }
 
