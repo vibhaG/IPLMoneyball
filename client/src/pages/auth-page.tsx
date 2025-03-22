@@ -75,11 +75,11 @@ const AuthPage = () => {
               Register
             </TabsTrigger>
           </TabsList>
-          
+
           <div className="relative h-1 bg-gradient-to-r from-[#004BA0] via-[#F7C430] to-[#ED1A37]">
             <div className="cricket-ball"></div>
           </div>
-          
+
           <TabsContent value="login" className="p-8">
             <div className="flex justify-center mb-6">
               <div className="relative">
@@ -87,7 +87,7 @@ const AuthPage = () => {
                 <span className="absolute -top-2 -right-4 text-xs bg-[#F7C430] text-white px-2 py-0.5 rounded-full transform rotate-12">2025</span>
               </div>
             </div>
-            
+
             <Form {...loginForm}>
               <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
                 <FormField
@@ -107,7 +107,7 @@ const AuthPage = () => {
                     </FormItem>
                   )}
                 />
-                
+
                 <FormField
                   control={loginForm.control}
                   name="password"
@@ -126,7 +126,7 @@ const AuthPage = () => {
                     </FormItem>
                   )}
                 />
-                
+
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
                     <Checkbox id="remember" className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" />
@@ -138,7 +138,7 @@ const AuthPage = () => {
                     Forgot password?
                   </a>
                 </div>
-                
+
                 <Button 
                   type="submit" 
                   className="w-full py-3 px-4 bg-gradient-to-r from-primary to-primary-dark text-white font-bold rounded-lg shadow-lg hover:from-primary-dark hover:to-primary transform transition-all duration-300 hover:scale-105"
@@ -149,7 +149,7 @@ const AuthPage = () => {
               </form>
             </Form>
           </TabsContent>
-          
+
           <TabsContent value="register" className="p-8">
             <div className="flex justify-center mb-6">
               <div className="relative">
@@ -157,7 +157,7 @@ const AuthPage = () => {
                 <span className="absolute -top-2 -right-4 text-xs bg-[#F7C430] text-white px-2 py-0.5 rounded-full transform rotate-12">2025</span>
               </div>
             </div>
-            
+
             <Form {...registerForm}>
               <form onSubmit={registerForm.handleSubmit(handleRegister)} className="space-y-4">
                 <FormField
@@ -177,7 +177,7 @@ const AuthPage = () => {
                     </FormItem>
                   )}
                 />
-                
+
                 <FormField
                   control={registerForm.control}
                   name="username"
@@ -195,7 +195,7 @@ const AuthPage = () => {
                     </FormItem>
                   )}
                 />
-                
+
                 <FormField
                   control={registerForm.control}
                   name="password"
@@ -214,7 +214,7 @@ const AuthPage = () => {
                     </FormItem>
                   )}
                 />
-                
+
                 <FormField
                   control={registerForm.control}
                   name="confirmPassword"
@@ -233,7 +233,7 @@ const AuthPage = () => {
                     </FormItem>
                   )}
                 />
-                
+
                 <FormField
                   control={registerForm.control}
                   name="role"
@@ -262,7 +262,7 @@ const AuthPage = () => {
                     </FormItem>
                   )}
                 />
-                
+
                 <Button 
                   type="submit" 
                   className="w-full py-3 px-4 bg-gradient-to-r from-[#ED1A37] to-[#BE123C] text-white font-bold rounded-lg shadow-lg hover:from-[#BE123C] hover:to-[#ED1A37] transform transition-all duration-300 hover:scale-105"
