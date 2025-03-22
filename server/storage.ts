@@ -537,7 +537,7 @@ const memStorage = new MemStorage();
 
 // Use MongoDB storage if available, otherwise fall back to in-memory
 // Try to use MongoDB storage, but fall back to in-memory storage if MongoDB fails
-export const storage: IStorage = memStorage;
+export const storage: IStorage = process.env.MONGODB_URI ? mongoStorage : memStorage;
 
 // This approach ensures we always have a working storage implementation,
 // even if MongoDB connection fails
