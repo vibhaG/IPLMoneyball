@@ -40,7 +40,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(user);
     } catch (error) {
       if (error instanceof ZodError) {
-        return res.status(400).json({ message: formatError(error).message });
+        return res.status(400).json({ message: fromZodError(error).message });
       }
       res.status(500).json({ message: "Failed to create user" });
     }
@@ -72,7 +72,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(match);
     } catch (error) {
       if (error instanceof ZodError) {
-        return res.status(400).json({ message: formatError(error).message });
+        return res.status(400).json({ message: fromZodError(error).message });
       }
       res.status(500).json({ message: "Failed to create match" });
     }
@@ -88,7 +88,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Parse and validate the bet data
       const betData = insertBetSchema.parse({
         ...req.body,
-        userId: req.user.id
+        userId: req.user?.id
       });
       
       // Verify the match exists
@@ -102,7 +102,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(bet);
     } catch (error) {
       if (error instanceof ZodError) {
-        return res.status(400).json({ message: formatError(error).message });
+        return res.status(400).json({ message: fromZodError(error).message });
       }
       res.status(500).json({ message: "Failed to place bet" });
     }
@@ -115,6 +115,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     try {
+      if (!req.user?.id) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
       const bets = await storage.getUserBets(req.user.id);
       res.json(bets);
     } catch (error) {

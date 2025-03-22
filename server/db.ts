@@ -4,31 +4,36 @@ let client: MongoClient | null = null;
 
 export async function connectToDatabase() {
   if (!client) {
-    // Create a default MongoDB connection string using localhost if none is provided
-    // This works well for development environments
-    const connectionString = process.env.DATABASE_URL || "mongodb://localhost:27017";
+    // Use the provided MongoDB URI from environment variables
+    const connectionString = process.env.MONGODB_URI;
+    
+    if (!connectionString) {
+      console.error("MONGODB_URI environment variable is not set");
+      return null;
+    }
     
     try {
-      // For non-MongoDB connection strings (like Postgres), create a MongoDB URL
-      let mongoUrl = connectionString;
-      if (!mongoUrl.startsWith("mongodb://") && !mongoUrl.startsWith("mongodb+srv://")) {
-        console.log("Converting database URL to MongoDB format");
-        mongoUrl = "mongodb://localhost:27017/ipl-betting";
-      }
+      // Add MongoDB connection options for handling SSL
+      const options = {
+        ssl: true,
+        tls: true,
+        tlsAllowInvalidCertificates: true,
+        tlsAllowInvalidHostnames: true,
+        retryWrites: true
+      };
       
-      client = new MongoClient(mongoUrl);
+      client = new MongoClient(connectionString, options);
       await client.connect();
-      console.log("Connected to MongoDB");
+      console.log("Connected to MongoDB cluster successfully");
     } catch (error) {
       console.error("Error connecting to MongoDB:", error);
-      
-      // Fallback to in-memory mode (simulated MongoDB)
-      console.log("Falling back to in-memory database mode");
       return null;
     }
   }
   
-  return client.db("ipl-betting");
+  // Extract database name from connection string or use default
+  const dbName = "ipl-betting";
+  return client.db(dbName);
 }
 
 export async function closeDatabaseConnection() {

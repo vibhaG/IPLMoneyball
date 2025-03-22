@@ -47,6 +47,7 @@ const AuthPage = () => {
 
   // Handle login form submission
   const handleLogin = (data: LoginData) => {
+    console.log("Login data:", data);
     loginMutation.mutate(data);
   };
 

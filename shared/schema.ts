@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { ObjectId } from "mongodb";
+
+// Define our own ObjectId type to avoid importing from mongodb in client code
+class ObjectId {
+  constructor(public id: string) {}
+  
+  static isValid(id: string): boolean {
+    return /^[0-9a-fA-F]{24}$/.test(id);
+  }
+}
 
 // User model schema
 export const userSchema = z.object({

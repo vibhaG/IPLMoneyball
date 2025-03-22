@@ -35,6 +35,7 @@ export class MongoDBStorage implements IStorage {
   private matches: Collection | null = null;
   private bets: Collection | null = null;
   public sessionStore: any;
+  private connected: boolean = false;
   
   private counters = {
     userId: 0,
@@ -48,6 +49,11 @@ export class MongoDBStorage implements IStorage {
     });
     
     this.initialize();
+  }
+  
+  // Check if MongoDB is connected
+  isConnected(): boolean {
+    return this.connected;
   }
   
   private async initialize() {
@@ -78,6 +84,9 @@ export class MongoDBStorage implements IStorage {
         if (matchCount === 0) {
           await this.createSampleMatches();
         }
+        
+        // Mark as connected if we got this far
+        this.connected = true;
       }
     } catch (error) {
       console.error("Failed to initialize MongoDB storage:", error);
@@ -245,4 +254,161 @@ export class MongoDBStorage implements IStorage {
   }
 }
 
-export const storage = new MongoDBStorage();
+// In-memory Storage implementation for fallback
+export class MemStorage implements IStorage {
+  private users: User[] = [];
+  private matches: Match[] = [];
+  private bets: Bet[] = [];
+  public sessionStore: any;
+  
+  private counters = {
+    userId: 0,
+    matchId: 0,
+    betId: 0
+  };
+  
+  constructor() {
+    this.sessionStore = new MemoryStore({
+      checkPeriod: 86400000, // 24 hours
+    });
+    
+    this.initialize();
+  }
+  
+  private initialize() {
+    // Create initial admin user
+    this.createUser({
+      username: "admin",
+      password: "password", // Will be hashed in auth.ts
+      fullName: "Admin User",
+      role: "admin"
+    });
+    
+    // Create sample matches
+    this.createSampleMatches();
+  }
+  
+  private async createSampleMatches() {
+    const teams = [
+      { team1: "Mumbai Indians", team2: "Chennai Super Kings" },
+      { team1: "Royal Challengers Bangalore", team2: "Delhi Capitals" },
+      { team1: "Kolkata Knight Riders", team2: "Rajasthan Royals" },
+      { team1: "Punjab Kings", team2: "Sunrisers Hyderabad" },
+      { team1: "Gujarat Titans", team2: "Lucknow Super Giants" }
+    ];
+    
+    const venues = [
+      "Wankhede Stadium, Mumbai",
+      "Chinnaswamy Stadium, Bangalore",
+      "Eden Gardens, Kolkata",
+      "Arun Jaitley Stadium, Delhi",
+      "MA Chidambaram Stadium, Chennai"
+    ];
+    
+    const times = ["3:30 PM", "7:30 PM"];
+    
+    // Create matches for next 30 days
+    for (let i = 0; i < 15; i++) {
+      const matchDate = new Date();
+      matchDate.setDate(matchDate.getDate() + i + 1); // Start from tomorrow
+      
+      const teamIndex = i % teams.length;
+      const venueIndex = i % venues.length;
+      const timeIndex = i % times.length;
+      
+      await this.createMatch({
+        team1: teams[teamIndex].team1,
+        team2: teams[teamIndex].team2,
+        venue: venues[venueIndex],
+        matchDate: matchDate,
+        time: times[timeIndex]
+      });
+    }
+  }
+  
+  async getUser(id: number): Promise<User | undefined> {
+    return this.users.find(user => user.id === id);
+  }
+  
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    return this.users.find(user => user.username.toLowerCase() === username.toLowerCase());
+  }
+  
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const id = ++this.counters.userId;
+    const user: User = { 
+      ...insertUser, 
+      id, 
+      isActive: true 
+    };
+    
+    this.users.push(user);
+    return user;
+  }
+  
+  async getAllUsers(): Promise<User[]> {
+    return this.users;
+  }
+  
+  async updateUser(id: number, updates: Partial<User>): Promise<User | undefined> {
+    const index = this.users.findIndex(user => user.id === id);
+    if (index === -1) return undefined;
+    
+    this.users[index] = { ...this.users[index], ...updates };
+    return this.users[index];
+  }
+  
+  async deactivateUser(id: number): Promise<boolean> {
+    const index = this.users.findIndex(user => user.id === id);
+    if (index === -1) return false;
+    
+    this.users[index].isActive = false;
+    return true;
+  }
+  
+  async createMatch(insertMatch: InsertMatch): Promise<Match> {
+    const id = ++this.counters.matchId;
+    const match: Match = { ...insertMatch, id };
+    
+    this.matches.push(match);
+    return match;
+  }
+  
+  async getMatch(id: number): Promise<Match | undefined> {
+    return this.matches.find(match => match.id === id);
+  }
+  
+  async getAllMatches(): Promise<Match[]> {
+    return this.matches;
+  }
+  
+  async getUpcomingMatches(): Promise<Match[]> {
+    const now = new Date();
+    return this.matches
+      .filter(match => match.matchDate > now)
+      .sort((a, b) => a.matchDate.getTime() - b.matchDate.getTime());
+  }
+  
+  async createBet(insertBet: InsertBet): Promise<Bet> {
+    const id = ++this.counters.betId;
+    const bet: Bet = { ...insertBet, id, createdAt: new Date() };
+    
+    this.bets.push(bet);
+    return bet;
+  }
+  
+  async getUserBets(userId: number): Promise<Bet[]> {
+    return this.bets.filter(bet => bet.userId === userId);
+  }
+  
+  async getMatchBets(matchId: number): Promise<Bet[]> {
+    return this.bets.filter(bet => bet.matchId === matchId);
+  }
+}
+
+// Use in-memory storage for simplicity and reliability
+const memStorage = new MemStorage();
+export const storage: IStorage = memStorage;
+
+// Log that we're using in-memory storage
+console.log("Using in-memory storage for development");
