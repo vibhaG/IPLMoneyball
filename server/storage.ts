@@ -71,9 +71,13 @@ export class MongoDBStorage implements IStorage {
         // Create initial admin user if none exists
         const adminUser = await this.getUserByUsername("admin");
         if (!adminUser) {
+          console.log("Creating admin user in MongoDB...");
+          // Import it here to avoid circular dependencies
+          const { hashPassword } = await import('./auth-web-compatible');
+          
           await this.createUser({
             username: "admin",
-            password: "password", // Will be hashed in auth.ts
+            password: hashPassword("password"), // Hash the password directly here
             fullName: "Admin User",
             role: "admin"
           });
@@ -194,13 +198,21 @@ export class MongoDBStorage implements IStorage {
     const userDoc = {
       id: user.id,
       username: user.username,
-      password: user.password,
+      password: user.password, // This will be hashed in auth.ts before reaching here
       fullName: user.fullName,
       role: user.role,
       isActive: user.isActive
     };
     
+    // Check if user already exists
+    const existingUser = await this.getUserByUsername(user.username);
+    if (existingUser) {
+      return existingUser;
+    }
+    
+    // Insert new user
     await this.users.insertOne(userDoc);
+    console.log(`Created user: ${user.username} with role: ${user.role}`);
     return user;
   }
 
@@ -377,17 +389,26 @@ export class MemStorage implements IStorage {
     this.initialize();
   }
   
-  private initialize() {
-    // Create initial admin user
-    this.createUser({
-      username: "admin",
-      password: "password", // Will be hashed in auth.ts
-      fullName: "Admin User",
-      role: "admin"
-    });
-    
-    // Create sample matches
-    this.createSampleMatches();
+  private async initialize() {
+    try {
+      // Import it here to avoid circular dependencies
+      const { hashPassword } = await import('./auth-web-compatible');
+      
+      // Create initial admin user
+      await this.createUser({
+        username: "admin",
+        password: hashPassword("password"), // Hash the password directly here
+        fullName: "Admin User",
+        role: "admin"
+      });
+      
+      // Create sample matches
+      await this.createSampleMatches();
+      
+      console.log("MemStorage initialized with admin user");
+    } catch (error) {
+      console.error("Error initializing MemStorage:", error);
+    }
   }
   
   private async createSampleMatches() {
@@ -508,9 +529,18 @@ export class MemStorage implements IStorage {
   }
 }
 
-// Use in-memory storage for simplicity and reliability
-const memStorage = new MemStorage();
-export const storage: IStorage = memStorage;
+// Create MongoDB storage for production use
+const mongoStorage = new MongoDBStorage();
 
-// Log that we're using in-memory storage
-console.log("Using in-memory storage for development");
+// Create memory storage as fallback
+const memStorage = new MemStorage();
+
+// Use MongoDB storage if available, otherwise fall back to in-memory
+export const storage: IStorage = process.env.MONGODB_URI ? mongoStorage : memStorage;
+
+// Log which storage type is being used
+if (process.env.MONGODB_URI) {
+  console.log("Using MongoDB storage");
+} else {
+  console.log("Using in-memory storage (MONGODB_URI not provided)");
+}
