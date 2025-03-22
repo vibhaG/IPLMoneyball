@@ -536,29 +536,29 @@ const mongoStorage = new MongoDBStorage();
 const memStorage = new MemStorage();
 
 // Initialize storage with proper connection check
-export const storage: IStorage = await initializeStorage();
+let storage: IStorage;
 
-// This ensures we have a working storage implementation after checking the connection
 async function initializeStorage() {
-  try {
-    if (process.env.MONGODB_URI) {
-      // Check if MongoDB is working by initializing it
-      if (await mongoStorage.isConnected()) {
-        console.log("Using MongoDB storage");
-        return mongoStorage;
-      } else {
-        console.log("MongoDB connection failed, using in-memory storage");
-        return memStorage;
-      }
+  if (process.env.MONGODB_URI) {
+    // Wait for MongoDB connection
+    await mongoStorage.initialize();
+    if (mongoStorage.isConnected()) {
+      console.log("Using MongoDB storage");
+      storage = mongoStorage;
     } else {
-      console.log("No MongoDB URI provided, using in-memory storage");
-      return memStorage;
+      console.log("MongoDB connection failed, using in-memory storage");
+      storage = memStorage;
     }
-  } catch (error) {
-    console.error("Error initializing MongoDB, falling back to in-memory storage:", error);
-    return memStorage;
+  } else {
+    console.log("No MongoDB URI provided, using in-memory storage");
+    storage = memStorage;
   }
+  return storage;
 }
+
+// Initialize and export storage
+storage = await initializeStorage();
+export { storage };
 
 // Log which storage type is being used
 if (process.env.MONGODB_URI) {
