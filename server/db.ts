@@ -13,16 +13,13 @@ export async function connectToDatabase() {
     }
     
     try {
-      // Add MongoDB connection options for handling SSL
+      // Simpler options that work around SSL issues
       const options = {
-        ssl: true,
-        tls: true,
-        tlsAllowInvalidCertificates: true,
-        tlsAllowInvalidHostnames: true,
-        retryWrites: true
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
       };
       
-      client = new MongoClient(connectionString, options);
+      client = new MongoClient(connectionString);
       await client.connect();
       console.log("Connected to MongoDB cluster successfully");
     } catch (error) {
@@ -32,7 +29,7 @@ export async function connectToDatabase() {
   }
   
   // Extract database name from connection string or use default
-  const dbName = "ipl-betting";
+  const dbName = "moneyball";
   return client.db(dbName);
 }
 

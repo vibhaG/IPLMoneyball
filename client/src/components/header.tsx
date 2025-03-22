@@ -28,10 +28,10 @@ const Header = () => {
           <div className="flex items-center">
             <Link href="/" className="flex-shrink-0">
               <div className="relative">
-                <h1 className="text-2xl font-montserrat font-bold text-primary">
-                  IPL <span className="text-secondary">BET</span>
+                <h1 className="text-2xl font-montserrat font-bold text-[#004BA0]">
+                  MONEY<span className="text-[#ED1A37]">BALL</span>
                 </h1>
-                <span className="absolute -top-1 -right-6 text-xs bg-accent text-white px-2 py-0.5 rounded-full transform rotate-12">
+                <span className="absolute -top-1 -right-6 text-xs bg-[#F7C430] text-white px-2 py-0.5 rounded-full transform rotate-12">
                   2025
                 </span>
               </div>
@@ -86,7 +86,7 @@ const Header = () => {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-                    <div className="h-10 w-10 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center text-white font-bold">
+                    <div className="h-10 w-10 rounded-full bg-gradient-to-r from-[#004BA0] to-[#ED1A37] flex items-center justify-center text-white font-bold">
                       {userInitials}
                     </div>
                   </Button>

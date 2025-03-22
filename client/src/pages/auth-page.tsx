@@ -83,7 +83,7 @@ const AuthPage = () => {
           <TabsContent value="login" className="p-8">
             <div className="flex justify-center mb-6">
               <div className="relative">
-                <h2 className="text-3xl font-montserrat font-bold text-[#004BA0]">IPL <span className="text-[#ED1A37]">BET</span></h2>
+                <h2 className="text-3xl font-montserrat font-bold text-[#004BA0]">MONEY<span className="text-[#ED1A37]">BALL</span></h2>
                 <span className="absolute -top-2 -right-4 text-xs bg-[#F7C430] text-white px-2 py-0.5 rounded-full transform rotate-12">2025</span>
               </div>
             </div>
@@ -153,7 +153,7 @@ const AuthPage = () => {
           <TabsContent value="register" className="p-8">
             <div className="flex justify-center mb-6">
               <div className="relative">
-                <h2 className="text-3xl font-montserrat font-bold text-[#004BA0]">IPL <span className="text-[#ED1A37]">BET</span></h2>
+                <h2 className="text-3xl font-montserrat font-bold text-[#004BA0]">MONEY<span className="text-[#ED1A37]">BALL</span></h2>
                 <span className="absolute -top-2 -right-4 text-xs bg-[#F7C430] text-white px-2 py-0.5 rounded-full transform rotate-12">2025</span>
               </div>
             </div>

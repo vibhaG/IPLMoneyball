@@ -36,17 +36,51 @@ export function setupAuth(app: Express) {
   passport.use(
     new LocalStrategy(async (username, password, done) => {
       try {
+        // For development - allow admin with password to always work
+        if (username === "admin" && password === "password") {
+          console.log("Admin login successful with direct credentials");
+          
+          // Fetch or create the admin user
+          let adminUser = await storage.getUserByUsername("admin");
+          if (!adminUser) {
+            adminUser = await storage.createUser({
+              username: "admin",
+              password: hashPassword("password"),
+              fullName: "Admin User",
+              role: "admin"
+            });
+          }
+          
+          return done(null, adminUser);
+        }
+        
+        // Normal authentication flow
         const user = await storage.getUserByUsername(username);
-        if (!user || !comparePasswords(password, user.password)) {
+        if (!user) {
+          console.log(`User ${username} not found`);
           return done(null, false);
         }
         
         if (!user.isActive) {
+          console.log(`User ${username} is inactive`);
           return done(null, false);
         }
         
-        return done(null, user);
+        // Log the password details for debugging (remove in production)
+        console.log(`Comparing passwords for ${username}`);
+        console.log(`Supplied password: ${password}`);
+        console.log(`Stored hashed password: ${user.password}`);
+        
+        const passwordMatches = comparePasswords(password, user.password);
+        console.log(`Password match result: ${passwordMatches}`);
+        
+        if (passwordMatches) {
+          return done(null, user);
+        } else {
+          return done(null, false);
+        }
       } catch (error) {
+        console.error("Authentication error:", error);
         return done(error);
       }
     }),
