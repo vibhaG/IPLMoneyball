@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IPL 2025 Betting</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Nunito', sans-serif;
+      background-color: #F0F9FF;
+    }
+    
+    .cricket-ball {
+      position: relative;
+    }
+    
+    .cricket-ball::before {
+      content: '';
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      background-color: #F7C430;
+      border-radius: 50%;
+      right: -10px;
+      top: -10px;
+      z-index: -1;
+      animation: bounce 5s infinite;
+    }
+    
+    @keyframes bounce {
+      0%, 100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-10px);
+      }
+    }
+    
+    .bet-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 25px rgba(0, 75, 160, 0.2);
+    }
+    
+    .nav-item.active {
+      border-bottom: 3px solid #ED1A37;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
