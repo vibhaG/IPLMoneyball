@@ -6,6 +6,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { SelectTrigger } from "@/components/ui/select-trigger";
 import { format } from "date-fns";
 
 // Cricket team logos as SVG icons
@@ -33,7 +35,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [betAmount, setBetAmount] = useState<string>("");
   const { toast } = useToast();
-  
+
   const betMutation = useMutation({
     mutationFn: async (betData: InsertBet) => {
       const res = await apiRequest("POST", "/api/bets", betData);
@@ -44,11 +46,11 @@ const MatchCard = ({ match }: MatchCardProps) => {
         title: "Bet Placed!",
         description: `You bet ₹${betAmount} on ${selectedTeam}`,
       });
-      
+
       // Clear form state
       setSelectedTeam(null);
       setBetAmount("");
-      
+
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: ["/api/bets"] });
     },
@@ -60,7 +62,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
       });
     },
   });
-  
+
   const handlePlaceBet = () => {
     if (!selectedTeam) {
       toast({
@@ -70,7 +72,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
       });
       return;
     }
-    
+
     if (!betAmount) {
       toast({
         title: "Invalid amount",
@@ -79,7 +81,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
       });
       return;
     }
-    
+
     betMutation.mutate({
       matchId: match.id,
       selectedTeam,
@@ -87,53 +89,65 @@ const MatchCard = ({ match }: MatchCardProps) => {
       userId: 0, // This will be set by the server based on the authenticated user
     });
   };
-  
+
   // Format date for display
   const formattedDate = format(new Date(match.matchDate), "MMMM d, yyyy");
-  
+
   // Get team logos
   const team1Logo = teamLogos[match.team1] || defaultLogo;
   const team2Logo = teamLogos[match.team2] || defaultLogo;
-  
+
   return (
     <div className="bet-card bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
       <div className="bg-gradient-to-r from-primary to-primary-dark p-4 text-white">
         <div className="flex justify-between items-center">
           <span className="text-sm font-semibold">{formattedDate}</span>
-          <span className="bg-accent text-primary px-2 py-0.5 rounded-full text-xs font-bold">{match.time}</span>
+          <span className="bg-accent text-primary px-2 py-0.5 rounded-full text-xs font-bold">
+            {match.time}
+          </span>
         </div>
         <p className="text-xs mt-1">{match.venue}</p>
       </div>
-      
+
       <div className="p-4">
         <div className="flex justify-between items-center mb-6">
           <div className="flex flex-col items-center">
             <div className="w-16 h-16 rounded-full bg-gray-100 p-2 flex items-center justify-center">
-              <div dangerouslySetInnerHTML={{ __html: team1Logo }} className="w-12 h-12" />
+              <div
+                dangerouslySetInnerHTML={{ __html: team1Logo }}
+                className="w-12 h-12"
+              />
             </div>
             <p className="mt-2 font-semibold text-gray-800">{match.team1}</p>
           </div>
-          
+
           <div className="text-center">
-            <div className="text-lg font-montserrat font-bold text-gray-400">VS</div>
+            <div className="text-lg font-montserrat font-bold text-gray-400">
+              VS
+            </div>
           </div>
-          
+
           <div className="flex flex-col items-center">
             <div className="w-16 h-16 rounded-full bg-gray-100 p-2 flex items-center justify-center">
-              <div dangerouslySetInnerHTML={{ __html: team2Logo }} className="w-12 h-12" />
+              <div
+                dangerouslySetInnerHTML={{ __html: team2Logo }}
+                className="w-12 h-12"
+              />
             </div>
             <p className="mt-2 font-semibold text-gray-800">{match.team2}</p>
           </div>
         </div>
-        
+
         <div className="border-t border-gray-100 pt-4">
-          <h4 className="text-sm font-semibold text-gray-500 mb-3">Place Your Bet</h4>
+          <h4 className="text-sm font-semibold text-gray-500 mb-3">
+            Place Your Bet
+          </h4>
           <div className="flex">
             <Button
               variant={selectedTeam === match.team1 ? "default" : "outline"}
               className={`flex-1 mr-2 py-2 px-4 ${
-                selectedTeam === match.team1 
-                  ? "bg-primary text-white" 
+                selectedTeam === match.team1
+                  ? "bg-primary text-white"
                   : "bg-white border border-primary text-primary hover:bg-primary hover:text-white"
               } rounded-lg transition-colors duration-300`}
               onClick={() => setSelectedTeam(match.team1)}
@@ -143,8 +157,8 @@ const MatchCard = ({ match }: MatchCardProps) => {
             <Button
               variant={selectedTeam === match.team2 ? "default" : "outline"}
               className={`flex-1 py-2 px-4 ${
-                selectedTeam === match.team2 
-                  ? "bg-secondary text-white" 
+                selectedTeam === match.team2
+                  ? "bg-secondary text-white"
                   : "bg-white border border-secondary text-secondary hover:bg-secondary hover:text-white"
               } rounded-lg transition-colors duration-300`}
               onClick={() => setSelectedTeam(match.team2)}
@@ -158,9 +172,9 @@ const MatchCard = ({ match }: MatchCardProps) => {
                 <SelectValue placeholder="Select bet amount" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="10">₹10</SelectItem>
-                <SelectItem value="20">₹20</SelectItem>
-                <SelectItem value="30">₹30</SelectItem>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="30">30</SelectItem>
               </SelectContent>
             </Select>
           </div>
