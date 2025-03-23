@@ -153,15 +153,16 @@ const MatchCard = ({ match }: MatchCardProps) => {
             </Button>
           </div>
           <div className="mt-3">
-            <Input
-              type="number"
-              min="100"
-              step="100"
-              placeholder="Bet"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-              value={betAmount}
-              onChange={(e) => setBetAmount(e.target.value)}
-            />
+            <Select value={betAmount} onValueChange={setBetAmount}>
+              <SelectTrigger className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                <SelectValue placeholder="Select bet amount" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">₹10</SelectItem>
+                <SelectItem value="20">₹20</SelectItem>
+                <SelectItem value="30">₹30</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <Button
             className="mt-3 w-full py-2 bg-accent hover:bg-accent-dark text-white font-semibold rounded-lg transition-colors duration-300"
