@@ -55,6 +55,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     try {
       const matches = await storage.getUpcomingMatches();
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.json(matches);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch matches" });
