@@ -6,8 +6,13 @@ import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
-import { SelectTrigger } from "@/components/ui/select-trigger";
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"; { SelectTrigger } from "@/components/ui/select-trigger";
 import { format } from "date-fns";
 
 // Cricket team logos as SVG icons
