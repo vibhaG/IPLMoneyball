@@ -6,13 +6,13 @@ import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"; { SelectTrigger } from "@/components/ui/select-trigger";
+} from "@/components/ui/select";
 import { format } from "date-fns";
 
 // Cricket team logos as SVG icons
@@ -49,7 +49,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
     onSuccess: () => {
       toast({
         title: "Bet Placed!",
-        description: `You bet ₹${betAmount} on ${selectedTeam}`,
+        description: `You bet ${betAmount} on ${selectedTeam}`,
       });
 
       // Clear form state
