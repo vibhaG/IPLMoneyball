@@ -15,6 +15,7 @@ const HomePage = () => {
   const { data: matches = [], isLoading } = useQuery<Match[]>({
     queryKey: ["/api/matches"],
   });
+  
 
   // Filter matches by search term and venue
   const filteredMatches = matches.filter((match) => {
