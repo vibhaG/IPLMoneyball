@@ -323,11 +323,14 @@ export class MongoDBStorage implements IStorage {
   }
 
   async getUpcomingMatches(): Promise<Match[]> {
+    console.log("getUpcomingMatches called");
     if (!this.matches) return [];
-
-    const now = new Date();
+    console.log("getUpcomingMatches called 1");
+    const now = Date. now();
     const upcomingMatches = await this.matches
-      .find({ matchDate: { $gt: now } })
+    .find()
+      //HACK: This is a workaround for the fact that the matchDate field is a Date type in MongoDB, but the date
+     // .find({ matchDate: { $gt: now } })
       .sort({ matchDate: 1 })
       .toArray();
 

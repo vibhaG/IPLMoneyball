@@ -48,13 +48,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get upcoming matches
   app.get("/api/matches", async (req, res) => {
-    console.log("GET /api/matches");
+    console.log(" In GET /api/matches");
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Not authenticated" });
     }
     
     try {
+      console.log(" In GET /api/matches 1");
       const matches = await storage.getUpcomingMatches();
+      console.log(" In GET /api/matches" + matches);
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');

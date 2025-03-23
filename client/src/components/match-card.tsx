@@ -71,10 +71,10 @@ const MatchCard = ({ match }: MatchCardProps) => {
       return;
     }
     
-    if (!betAmount || parseFloat(betAmount) < 100) {
+    if (!betAmount) {
       toast({
         title: "Invalid amount",
-        description: "Bet amount must be at least ₹100",
+        description: "Empty Amount",
         variant: "destructive",
       });
       return;
@@ -157,7 +157,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
               type="number"
               min="100"
               step="100"
-              placeholder="Bet Amount (₹)"
+              placeholder="Bet"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               value={betAmount}
               onChange={(e) => setBetAmount(e.target.value)}
