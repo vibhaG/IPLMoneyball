@@ -14,6 +14,18 @@ const HomePage = () => {
 
   const { data: matches = [], isLoading } = useQuery<Match[]>({
     queryKey: ["/api/matches"],
+    queryFn: async () => {
+      const response = await fetch("/api/matches", {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        },
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Network response was not ok');
+      return response.json();
+    }
   });
   
 
