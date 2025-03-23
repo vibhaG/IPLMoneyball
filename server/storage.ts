@@ -532,10 +532,12 @@ export class MemStorage implements IStorage {
   }
 
   async getAllMatches(): Promise<Match[]> {
+    console.log(" In getAllMatches ");
     return this.matches;
   }
 
   async getUpcomingMatches(): Promise<Match[]> {
+    console.log(" In getUpcomingMatches ");
     const now = new Date();
     return this.matches
       .filter((match) => match.matchDate > now)

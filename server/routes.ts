@@ -48,6 +48,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get upcoming matches
   app.get("/api/matches", async (req, res) => {
+    console.log("GET /api/matches");
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Not authenticated" });
     }
