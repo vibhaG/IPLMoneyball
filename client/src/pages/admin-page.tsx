@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { User } from "@shared/schema";
+import { User, Match } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/header";
@@ -15,8 +15,12 @@ const AdminPage = () => {
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const { toast } = useToast();
   
-  const { data: users = [], isLoading } = useQuery<User[]>({
+  const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["/api/users"],
+  });
+
+  const { data: matches = [], isLoading: matchesLoading } = useQuery<Match[]>({
+    queryKey: ["/api/matches"],
   });
 
   const deactivateUserMutation = useMutation({
@@ -39,9 +43,35 @@ const AdminPage = () => {
     },
   });
 
+  const updateMatchMutation = useMutation({
+    mutationFn: async ({ matchId, winner }: { matchId: number; winner: string }) => {
+      await apiRequest("PUT", `/api/matches/${matchId}/winner`, { winner });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/matches"] });
+      toast({
+        title: "Match updated",
+        description: "The match winner has been set successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to update match",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleDeactivateUser = (userId: number) => {
     if (confirm("Are you sure you want to deactivate this user?")) {
       deactivateUserMutation.mutate(userId);
+    }
+  };
+
+  const handleSetWinner = (matchId: number, winner: string) => {
+    if (confirm(`Are you sure you want to set ${winner} as the winner?`)) {
+      updateMatchMutation.mutate({ matchId, winner });
     }
   };
 
@@ -65,6 +95,12 @@ const AdminPage = () => {
                     className="px-4 py-2 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=inactive]:text-gray-500 data-[state=inactive]:hover:text-gray-700 data-[state=inactive]:hover:border-gray-300 font-medium bg-transparent rounded-none"
                   >
                     User Management
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="matches" 
+                    className="px-4 py-2 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=inactive]:text-gray-500 data-[state=inactive]:hover:text-gray-700 data-[state=inactive]:hover:border-gray-300 font-medium bg-transparent rounded-none"
+                  >
+                    Match Management
                   </TabsTrigger>
                   <TabsTrigger 
                     value="analytics" 
@@ -92,7 +128,7 @@ const AdminPage = () => {
                     </Button>
                   </div>
                   
-                  {isLoading ? (
+                  {usersLoading ? (
                     <div className="flex justify-center py-12">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                     </div>
@@ -155,6 +191,64 @@ const AdminPage = () => {
                                     </button>
                                   )}
                                 </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </TabsContent>
+                
+                <TabsContent value="matches">
+                  {matchesLoading ? (
+                    <div className="flex justify-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Match Date</th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teams</th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Venue</th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Winner</th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {matches.map((match) => (
+                            <tr key={match.id}>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {new Date(match.matchDate).toLocaleDateString()}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {match.team1} vs {match.team2}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {match.venue}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {match.winner || 'Not set'}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {!match.winner && (
+                                  <div className="flex space-x-4">
+                                    <button
+                                      onClick={() => handleSetWinner(match.id, match.team1)}
+                                      className="text-primary hover:text-primary-dark"
+                                    >
+                                      Set {match.team1}
+                                    </button>
+                                    <button
+                                      onClick={() => handleSetWinner(match.id, match.team2)}
+                                      className="text-primary hover:text-primary-dark"
+                                    >
+                                      Set {match.team2}
+                                    </button>
+                                  </div>
+                                )}
                               </td>
                             </tr>
                           ))}

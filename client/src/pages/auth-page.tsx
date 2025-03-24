@@ -30,12 +30,6 @@ const AuthPage = () => {
   const [, navigate] = useLocation();
   const { user, loginMutation, registerMutation } = useAuth();
 
-  // Redirect if already logged in
-  if (user) {
-    navigate("/");
-    return null;
-  }
-
   // Login form
   const loginForm = useForm({
     resolver: zodResolver(loginSchema),
@@ -56,6 +50,12 @@ const AuthPage = () => {
       role: "user",
     },
   });
+
+  // Redirect if already logged in
+  if (user) {
+    navigate("/");
+    return null;
+  }
 
   // Handle login form submission
   const handleLogin = (data: LoginData) => {

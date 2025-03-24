@@ -1,8 +1,42 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import cors from 'cors';
+
+// Get the equivalent of __dirname in ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Add debugging before dotenv loads
+console.log('Current working directory:', process.cwd());
+console.log('Looking for .env file at:', path.resolve(__dirname, '../.env'));
+
+// Load dotenv with explicit path
+const result = dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+// Check if dotenv loaded successfully
+if (result.error) {
+  console.log('Error loading .env file:', result.error);
+} else {
+  console.log('.env file loaded successfully');
+}
+
+// Log relevant environment variables
+console.log('Environment variables after loading:', {
+  MONGODB_URI: process.env.MONGODB_URI ? 'exists (value hidden)' : 'not found',
+  PORT: process.env.PORT,
+  NODE_ENV: process.env.NODE_ENV,
+});
 
 const app = express();
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -59,7 +93,7 @@ app.use((req, res, next) => {
   // ALWAYS serve the app on port 5000
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = 5000;
+  const port = process.env.PORT || 5000;
   server.listen({
     port,
     host: "0.0.0.0",
