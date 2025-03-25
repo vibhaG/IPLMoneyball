@@ -16,9 +16,11 @@ export async function apiRequest(
     method,
     headers: {
       ...(data ? { "Content-Type": "application/json" } : {}),
+      "Accept": "application/json",
     },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
+    mode: "cors",
   });
 
   await throwIfResNotOk(res);
@@ -33,8 +35,10 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const res = await fetch(queryKey[0] as string, {
       credentials: "include",
+      mode: "cors",
       headers: {
         "Content-Type": "application/json",
+        "Accept": "application/json",
       },
     });
 
@@ -57,8 +61,14 @@ export const queryClient = new QueryClient({
       refetchInterval: false,
       refetchOnWindowFocus: false,
       staleTime: 0,
-      retry: false,
-      // Don't set a default queryFn here, let each query specify its own
+      retry: (failureCount, error) => {
+        // Don't retry on 401 errors
+        if (error instanceof Error && error.message.includes("401")) {
+          return false;
+        }
+        // Retry other errors up to 2 times
+        return failureCount < 2;
+      },
     },
     mutations: {
       retry: false,

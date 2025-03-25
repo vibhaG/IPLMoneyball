@@ -21,6 +21,11 @@ export const userSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+// Authenticated user schema (user with required id)
+export const authenticatedUserSchema = userSchema.extend({
+  id: z.number(),
+});
+
 export const insertUserSchema = userSchema.omit({
   _id: true,
   id: true,
@@ -29,14 +34,15 @@ export const insertUserSchema = userSchema.omit({
 
 // Match model schema
 export const matchSchema = z.object({
-  id: z.number().optional(),
+  id: z.number(),
   _id: z.instanceof(ObjectId).optional(),
   team1: z.string(),
   team2: z.string(),
   venue: z.string(),
   matchDate: z.coerce.date(),
   time: z.string(),
-  winner: z.string().nullable().optional(),
+  winner: z.string().nullable(),
+  isAbandoned: z.boolean().default(false),
 });
 
 export const insertMatchSchema = matchSchema.omit({
@@ -69,10 +75,16 @@ export const leaderboardEntrySchema = z.object({
   winningBets: z.number(),
   totalBets: z.number(),
 });
+export const scoreSchema = z.object({
+  userId: z.number(),
+  points: z.number(),
+});
+
 
 // Data types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = z.infer<typeof userSchema>;
+export type AuthenticatedUser = z.infer<typeof authenticatedUserSchema>;
 
 export type InsertMatch = z.infer<typeof insertMatchSchema>;
 export type Match = z.infer<typeof matchSchema>;
@@ -81,7 +93,7 @@ export type InsertBet = z.infer<typeof insertBetSchema>;
 export type Bet = z.infer<typeof betSchema>;
 
 export type LeaderboardEntry = z.infer<typeof leaderboardEntrySchema>;
-
+export type Score = z.infer<typeof scoreSchema>;
 // Registration schema with validation
 export const registrationSchema = userSchema
   .pick({

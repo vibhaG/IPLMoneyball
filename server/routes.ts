@@ -36,8 +36,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Username already exists" });
       }
       
-      const user = await storage.createUser(req.body);
-      res.status(201).json(user);
+      // Hash the password before creating the user
+      const { hashPassword } = await import("./auth-web-compatible");
+      const userData = {
+        ...req.body,
+        password: hashPassword(req.body.password)
+      };
+      
+      const user = await storage.createUser(userData);
+      // Don't send password back to client
+      const { password, ...userWithoutPassword } = user;
+      res.status(201).json(userWithoutPassword);
     } catch (error) {
       if (error instanceof ZodError) {
         return res.status(400).json({ message: fromZodError(error).message });
@@ -56,7 +65,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     try {
-      console.log(" In GET /api/matches 1");
       const matches = await storage.getUpcomingMatches();
       console.log(" In GET /api/matches" + matches);
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -133,6 +141,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get user's bet for a specific match
+  app.get("/api/bets/match/:matchId", async (req, res) => {
+    console.log("GET /api/bets/match/:matchId called");
+    console.log("User:", req.user);
+    console.log("Match ID:", req.params.matchId);
+    
+    if (!req.isAuthenticated()) {
+      console.log("User not authenticated");
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    
+    try {
+      if (!req.user?.id) {
+        console.log("No user ID found");
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+      const matchId = parseInt(req.params.matchId);
+      console.log("Fetching bet for user:", req.user.id, "match:", matchId);
+      const bet = await storage.getUserBetsForMatch(req.user.id, matchId);
+      console.log("Found bet:", bet);
+      res.json(bet || null);
+    } catch (error) {
+      console.error("Error fetching bet:", error);
+      res.status(500).json({ message: "Failed to fetch bet" });
+    }
+  });
+
   // Deactivate user (admin only)
   app.put("/api/users/:id/deactivate", async (req, res) => {
     if (!req.isAuthenticated() || req.user?.role !== "admin") {
@@ -151,6 +186,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to deactivate user" });
     }
   });
+  //update match winner
+  app.put("/api/matches/:id/winner", async (req, res) => {
+    console.log("PUT /api/matches/:id/winner called");
+    console.log("User:", req.user);
+    console.log("Match ID:", req.params.id);
+    console.log("Request body:", req.body);
+    if (!req.isAuthenticated() || req.user?.role !== "admin") {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    const matchId = parseInt(req.params.id);
+    const winner = req.body.winner;
+    const success = await storage.updateMatchResult(matchId, winner, false );
+    if (!success) {
+      return res.status(404).json({ message: "Match not found" });
+    }
+    res.json({ success: true });
+  }); 
 
   const httpServer = createServer(app);
   return httpServer;
