@@ -37,6 +37,8 @@ export interface IStorage {
   getMatchBets(matchId: number): Promise<Bet[]>;
 
   sessionStore: any;
+
+  updateUserPassword(userId: number, newPassword: string): Promise<boolean>;
 }
 
 interface UserWithoutPassword {
@@ -395,6 +397,13 @@ export class MongoDBStorage implements IStorage {
     };
 
     await this.bets.insertOne(betDoc);
+  /*  await this.bets.updateOne(
+      {id: bet.id,},
+      { userId: bet.userId },
+      {matchId: bet.matchId},
+      {selectedTeam: bet.selectedTeam},
+      { upsert: true }
+  );*/
     return bet;
   }
 
@@ -523,6 +532,15 @@ export class MongoDBStorage implements IStorage {
     }
 
     return this.getMatch(id);
+  }
+
+  async updateUserPassword(userId: number, newPassword: string): Promise<boolean> {
+    if (!this.users) return false;
+    const result = await this.users.updateOne(
+      { id: userId },
+      { $set: { password: newPassword } }
+    );
+    return result.modifiedCount > 0;
   }
 }
 
@@ -719,6 +737,17 @@ export class MemStorage implements IStorage {
 
     this.matches[index] = { ...this.matches[index], winner, isAbandoned };
     return this.matches[index];
+  }
+
+  async updateUserPassword(userId: number, newPassword: string): Promise<boolean> {
+    const userIndex = this.users.findIndex(user => user.id === userId);
+    if (userIndex === -1) return false;
+    
+    this.users[userIndex] = {
+      ...this.users[userIndex],
+      password: newPassword
+    };
+    return true;
   }
 }
 

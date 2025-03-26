@@ -7,6 +7,7 @@ import HomePage from "@/pages/home-page";
 import AuthPage from "@/pages/auth-page";
 import AdminPage from "@/pages/admin-page";
 import LeaderboardPage from "@/pages/leaderboard-page";
+import MyBetsPage from "@/pages/my-bets-page";
 import { AuthProvider } from "@/hooks/use-auth";
 import { ProtectedRoute } from "./lib/protected-route";
 
@@ -16,6 +17,7 @@ function Router() {
       <ProtectedRoute path="/" component={HomePage} />
       <ProtectedRoute path="/admin" component={AdminPage} role="admin" />
       <ProtectedRoute path="/leaderboard" component={LeaderboardPage} />
+      <ProtectedRoute path="/my-bets" component={MyBetsPage} />
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>

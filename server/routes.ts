@@ -4,7 +4,8 @@ import { storage } from "./storage";
 import { setupAuth } from "./auth";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { InsertMatch, insertMatchSchema, Match, insertBetSchema, InsertBet } from "@shared/schema";
+import { InsertMatch, insertMatchSchema, Match, insertBetSchema, InsertBet, Bet } from "@shared/schema";
+import { Parentheses } from "lucide-react";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup auth routes (/api/register, /api/login, /api/logout, /api/user)
@@ -12,12 +13,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get all users (admin only)
   app.get("/api/users", async (req, res) => {
+    console.log("GET /api/users called");
     if (!req.isAuthenticated() || req.user?.role !== "admin") {
       return res.status(403).json({ message: "Access denied" });
     }
     
     try {
       const users = await storage.getAllUsers();
+      console.log("GET /api/users" + users);
       res.json(users);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch users" });
@@ -186,6 +189,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to deactivate user" });
     }
   });
+
+  // Reset user password
+  app.put("/api/users/reset-password", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const { currentPassword, newPassword } = req.body;
+      
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Current password and new password are required" });
+      }
+
+      // Get user and verify current password
+      const user = await storage.getUser(req.user!.id!);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { comparePasswords, hashPassword } = await import("./auth-web-compatible");
+      if (!comparePasswords(currentPassword, user.password)) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+
+      // Hash new password and update
+      const hashedPassword = hashPassword(newPassword);
+      const success = await storage.updateUserPassword(req.user!.id!, hashedPassword);
+      
+      if (!success) {
+        return res.status(500).json({ message: "Failed to update password" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error resetting password:", error);
+      res.status(500).json({ message: "Failed to reset password" });
+    }
+  });
+
   //update match winner
   app.put("/api/matches/:id/winner", async (req, res) => {
     console.log("PUT /api/matches/:id/winner called");
@@ -196,14 +239,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(403).json({ message: "Access denied" });
     }
     const matchId = parseInt(req.params.id);
-    const winner = req.body.winner;
-    const success = await storage.updateMatchResult(matchId, winner, false );
-    if (!success) {
+    const { winner, isAbandoned } = req.body;
+    const updatedMatch = await storage.updateMatchResult(matchId, winner, isAbandoned);
+    if (!updatedMatch) {
       return res.status(404).json({ message: "Match not found" });
     }
-    res.json({ success: true });
+    res.json(updatedMatch);
   }); 
+
+  // Update existing bet
+  app.put("/api/bets/:id", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const betId = parseInt(req.params.id);
+      
+      // Verify the match is still upcoming
+      const match = await storage.getMatch(req.body.matchId);
+      if (!match) {
+        return res.status(404).json({ message: "Match not found" });
+      }
+      
+      if (match.matchDate <= new Date() || match.winner || match.isAbandoned) {
+        return res.status(400).json({ message: "Cannot update bet for past or completed match" });
+      }
+
+      // Validate that selected team matches one of the teams in the match
+      if (req.body.selectedTeam !== match.team1 && req.body.selectedTeam !== match.team2) {
+        return res.status(400).json({ 
+          message: "Selected team must be one of the teams playing in the match",
+          validTeams: [match.team1, match.team2]
+        });
+      }
+
+      const betData = insertBetSchema.parse({
+        ...req.body,
+        userId: req.user?.id
+      });
+
+      // Verify the bet exists and belongs to the user
+      const existingBet = await storage.getUserBetsForMatch(req.user!.id!, betData.matchId);
+      if (!existingBet || existingBet.id !== betId) {
+        return res.status(404).json({ message: "Bet not found or unauthorized" });
+      }
+
+      const updatedBet = await storage.updateBet(betId, betData);
+      if (!updatedBet) {
+        return res.status(500).json({ message: "Failed to update bet" });
+      }
+
+      res.json(updatedBet);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ message: fromZodError(error).message });
+      }
+      res.status(500).json({ message: "Failed to update bet" });
+    }
+  });
 
   const httpServer = createServer(app);
   return httpServer;
 }
+

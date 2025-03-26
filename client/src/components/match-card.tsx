@@ -47,9 +47,9 @@ const MatchCard = ({ match }: MatchCardProps) => {
   const { data: existingBet, isLoading } = useQuery<Bet | null>({
     queryKey: ["/api/bets/match", match.id],
     queryFn: async () => {
-      console.log("Fetching bet for match:", match.id);
+  //    console.log("Fetching bet for match:", match.id);
       const response = await apiRequest("GET", `/api/bets/match/${match.id}`);
-      console.log("Bet response:", response);
+    //  console.log("Bet response:", response);
       return await response.json() as Bet | null;
     },
     enabled: !!user?.id,
@@ -69,7 +69,10 @@ const MatchCard = ({ match }: MatchCardProps) => {
     mutationFn: async (betData: InsertBet) => {
       if (existingBet?.id) {
         // Update existing bet
-        const response = await apiRequest("PUT", `/api/bets/${existingBet.id}`, betData);
+        console.log("Exisitng bet is "+ existingBet.id);
+        console.log("Bet Data before " + betData);
+        const response = await apiRequest("PUT", "/api/bets", betData);
+        console.log("Bet Data after " + betData);
         return await response.json() as Bet;
       } else {
         // Create new bet
@@ -79,8 +82,8 @@ const MatchCard = ({ match }: MatchCardProps) => {
     },
     onSuccess: () => {
       toast({
-        title: existingBet ? "Bet Updated!" : "Bet Placed!",
-        description: `You bet ${betAmount} on ${selectedTeam}`,
+        title: existingBet ? "Prediction Updated!" : "Prediction Placed!",
+        description: `You put ${betAmount} on ${selectedTeam}`,
       });
 
       // Invalidate relevant queries
@@ -89,7 +92,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
     },
     onError: (error: Error) => {
       toast({
-        title: "Failed to place bet",
+        title: "Failed to pick team",
         description: error.message,
         variant: "destructive",
       });
@@ -97,15 +100,16 @@ const MatchCard = ({ match }: MatchCardProps) => {
   });
 
   const handlePlaceBet = () => {
+    
     if (!selectedTeam) {
       toast({
         title: "Team required",
-        description: "Please select a team to bet on",
+        description: "Please select a team",
         variant: "destructive",
       });
       return;
     }
-
+    console.log("Selected Team "+ selectedTeam );
     if (!betAmount) {
       toast({
         title: "Invalid amount",
@@ -114,11 +118,11 @@ const MatchCard = ({ match }: MatchCardProps) => {
       });
       return;
     }
-
+    console.log("Bet Amount "+ betAmount );
     if (!user) {
       toast({
         title: "Authentication required",
-        description: "Please log in to place a bet",
+        description: "Please log in to play",
         variant: "destructive",
       });
       return;
@@ -186,7 +190,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
         {existingBet && (
           <div className="mb-4 p-3 bg-blue-50 rounded-lg">
             <p className="text-sm text-blue-800">
-              Your current bet: {existingBet.amount} on {existingBet.selectedTeam}
+              Your current guess: {existingBet.amount} on {existingBet.selectedTeam}
             </p>
           </div>
         )}
@@ -221,7 +225,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
                 disabled={betMutation.isPending}
                 className="bg-primary hover:bg-primary-dark text-white"
               >
-                {existingBet ? "Update Bet" : "Place Bet"}
+                {existingBet ? "Update guess" : "Place guess"}
               </Button>
             </div>
           </div>

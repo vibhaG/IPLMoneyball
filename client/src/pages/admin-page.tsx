@@ -1,57 +1,101 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { User, Match } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
-import AddUserDialog from "@/components/add-user-dialog";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PlusCircle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import AddUserDialog from "@/components/add-user-dialog";
 import { apiRequest } from "@/lib/queryClient";
 
+const userSchema = z.object({
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  fullName: z.string().min(1, "Full name is required"),
+  role: z.enum(["user", "admin"]),
+});
+
+type UserFormData = z.infer<typeof userSchema>;
+
 const AdminPage = () => {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const { toast } = useToast();
   
   const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["/api/users"],
+    queryFn: async () => {
+      console.log('Fetching users...');
+      const response = await fetch("/api/users", {
+        credentials: 'include'
+      });
+      console.log('Users response status:', response.status);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        throw new Error('Failed to fetch users');
+      }
+      return response.json();
+    }
   });
 
   const { data: matches = [], isLoading: matchesLoading } = useQuery<Match[]>({
     queryKey: ["/api/matches"],
   });
 
-  const deactivateUserMutation = useMutation({
-    mutationFn: async (userId: number) => {
-      await apiRequest("PUT", `/api/users/${userId}/deactivate`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-      toast({
-        title: "User deactivated",
-        description: "The user has been deactivated successfully",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Failed to deactivate user",
-        description: error.message,
-        variant: "destructive",
-      });
+  const form = useForm<UserFormData>({
+    resolver: zodResolver(userSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+      fullName: "",
+      role: "user",
     },
   });
 
-  const updateMatchMutation = useMutation({
-    mutationFn: async ({ matchId, winner }: { matchId: number; winner: string }) => {
-      await apiRequest("PUT", `/api/matches/${matchId}/winner`, { winner });
+  const createUserMutation = useMutation({
+    mutationFn: async (data: UserFormData) => {
+      const response = await apiRequest("POST", "/api/users", data);
+      return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/matches"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      setIsAddUserDialogOpen(false);
+      form.reset();
+    },
+  });
+
+  const toggleUserStatusMutation = useMutation({
+    mutationFn: async ({ userId, isActive }: { userId: number; isActive: boolean }) => {
+      const response = await apiRequest("PUT", `/api/users/${userId}/status`, { isActive });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+    },
+  });
+
+  const updateMatchResultMutation = useMutation({
+    mutationFn: async ({ matchId, winner, isAbandoned }: { matchId: number; winner: string | null; isAbandoned: boolean }) => {
+      const response = await apiRequest("PUT", `/api/matches/${matchId}/winner`, { winner, isAbandoned });
+      return response.json();
+    },
+    onSuccess: (updatedMatch) => {
+      queryClient.setQueryData(["/api/matches"], (oldData: Match[] | undefined) => {
+        if (!oldData) return [updatedMatch];
+        return oldData.map(match => match.id === updatedMatch.id ? updatedMatch : match);
+      });
       toast({
         title: "Match updated",
-        description: "The match winner has been set successfully",
+        description: "Match result has been updated successfully",
       });
     },
     onError: (error: Error) => {
@@ -63,17 +107,29 @@ const AdminPage = () => {
     },
   });
 
-  const handleDeactivateUser = (userId: number) => {
-    if (confirm("Are you sure you want to deactivate this user?")) {
-      deactivateUserMutation.mutate(userId);
+  const handleToggleUserStatus = (userId: number, currentStatus: boolean) => {
+    toggleUserStatusMutation.mutate({ userId, isActive: !currentStatus });
+  };
+
+  const handleUpdateMatchResult = (match: Match) => {
+    if (match.winner) {
+      updateMatchResultMutation.mutate({ matchId: match.id, winner: null, isAbandoned: false });
+    } else if (match.isAbandoned) {
+      updateMatchResultMutation.mutate({ matchId: match.id, winner: null, isAbandoned: false });
+    } else {
+      // Show dialog to select winner or mark as abandoned
+      const winner = window.prompt(`Enter winner (${match.team1} or ${match.team2}) or type 'abandoned':`);
+      if (winner === 'abandoned') {
+        updateMatchResultMutation.mutate({ matchId: match.id, winner: null, isAbandoned: true });
+      } else if (winner === match.team1 || winner === match.team2) {
+        updateMatchResultMutation.mutate({ matchId: match.id, winner, isAbandoned: false });
+      }
     }
   };
 
-  const handleSetWinner = (matchId: number, winner: string) => {
-    if (confirm(`Are you sure you want to set ${winner} as the winner?`)) {
-      updateMatchMutation.mutate({ matchId, winner });
-    }
-  };
+  if (!user || user.role !== "admin") {
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
@@ -88,200 +144,155 @@ const AdminPage = () => {
             </div>
             
             <div className="p-6">
-              <Tabs defaultValue="users" className="w-full">
-                <TabsList className="border-b border-gray-200 w-full justify-start rounded-none bg-transparent mb-6">
-                  <TabsTrigger 
-                    value="users" 
-                    className="px-4 py-2 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=inactive]:text-gray-500 data-[state=inactive]:hover:text-gray-700 data-[state=inactive]:hover:border-gray-300 font-medium bg-transparent rounded-none"
-                  >
-                    User Management
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="matches" 
-                    className="px-4 py-2 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=inactive]:text-gray-500 data-[state=inactive]:hover:text-gray-700 data-[state=inactive]:hover:border-gray-300 font-medium bg-transparent rounded-none"
-                  >
-                    Match Management
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="analytics" 
-                    className="px-4 py-2 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=inactive]:text-gray-500 data-[state=inactive]:hover:text-gray-700 data-[state=inactive]:hover:border-gray-300 font-medium bg-transparent rounded-none"
-                  >
-                    Bet Analytics
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="settings" 
-                    className="px-4 py-2 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=inactive]:text-gray-500 data-[state=inactive]:hover:text-gray-700 data-[state=inactive]:hover:border-gray-300 font-medium bg-transparent rounded-none"
-                  >
-                    System Settings
-                  </TabsTrigger>
-                </TabsList>
+              <div className="mb-8">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Users</h3>
+                  <Button onClick={() => setIsAddUserDialogOpen(true)}>
+                    Add User
+                  </Button>
+                </div>
                 
-                <TabsContent value="users">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-semibold text-gray-800">Registered Users</h3>
-                    <Button 
-                      className="flex items-center px-4 py-2 bg-secondary text-white rounded-lg hover:bg-secondary-dark transition-colors duration-300"
-                      onClick={() => setIsAddUserDialogOpen(true)}
-                    >
-                      <PlusCircle className="h-5 w-5 mr-2" />
-                      Add New User
-                    </Button>
+                {usersLoading ? (
+                  <div className="flex justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                   </div>
-                  
-                  {usersLoading ? (
-                    <div className="flex justify-center py-12">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {users.map((user) => (
+                          <tr key={user.id}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">{user.fullName}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-500">{user.username}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                user.role === "admin"
+                                  ? "bg-purple-100 text-purple-800"
+                                  : "bg-blue-100 text-blue-800"
+                              }`}>
+                                {user.role}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                user.isActive
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-red-100 text-red-800"
+                              }`}>
+                                {user.isActive ? "Active" : "Inactive"}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleToggleUserStatus(user.id!, user.isActive)}
+                                disabled={toggleUserStatusMutation.isPending}
+                              >
+                                {user.isActive ? "Deactivate" : "Activate"}
+                              </Button>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {users.map((user) => (
-                            <tr key={user.id}>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center">
-                                  <div className="h-10 w-10 rounded-full bg-gradient-to-r from-primary to-secondary flex items-center justify-center text-white font-bold">
-                                    {user.fullName.split(' ').map(part => part[0]).join('').toUpperCase()}
-                                  </div>
-                                  <div className="ml-4">
-                                    <div className="text-sm font-medium text-gray-900">{user.fullName}</div>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-900">{user.username}</div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                  user.role === 'admin' 
-                                    ? 'bg-accent text-white' 
-                                    : 'bg-primary-light text-white'
-                                }`}>
-                                  {user.role === 'admin' ? 'Admin' : 'Regular User'}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                  user.isActive 
-                                    ? 'bg-green-100 text-green-800' 
-                                    : 'bg-red-100 text-red-800'
-                                }`}>
-                                  {user.isActive ? 'Active' : 'Inactive'}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                <div className="flex space-x-2">
-                                  <button className="text-indigo-600 hover:text-indigo-900">Edit</button>
-                                  {user.isActive && (
-                                    <button 
-                                      className="text-red-600 hover:text-red-900"
-                                      onClick={() => handleDeactivateUser(user.id)}
-                                      disabled={deactivateUserMutation.isPending}
-                                    >
-                                      Deactivate
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </TabsContent>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Matches</h3>
+                  <Button onClick={() => {/* TODO: Add match dialog */}}>
+                    Add Match
+                  </Button>
+                </div>
                 
-                <TabsContent value="matches">
-                  {matchesLoading ? (
-                    <div className="flex justify-center py-12">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Match Date</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teams</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Venue</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Winner</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {matches.map((match) => (
-                            <tr key={match.id}>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {new Date(match.matchDate).toLocaleDateString()}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                {matchesLoading ? (
+                  <div className="flex justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teams</th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Venue</th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Winner</th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {matches.map((match) => (
+                          <tr key={match.id}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">
                                 {match.team1} vs {match.team2}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {match.venue}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {match.winner || 'Not set'}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {!match.winner && (
-                                  <div className="flex space-x-4">
-                                    <button
-                                      onClick={() => handleSetWinner(match.id, match.team1)}
-                                      className="text-primary hover:text-primary-dark"
-                                    >
-                                      Set {match.team1}
-                                    </button>
-                                    <button
-                                      onClick={() => handleSetWinner(match.id, match.team2)}
-                                      className="text-primary hover:text-primary-dark"
-                                    >
-                                      Set {match.team2}
-                                    </button>
-                                  </div>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </TabsContent>
-                
-                <TabsContent value="analytics">
-                  <div className="py-12 text-center">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-2">Bet Analytics</h3>
-                    <p className="text-gray-600">Coming soon! Bet analytics features are under development.</p>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">
+                                {new Date(match.matchDate).toLocaleDateString()}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {match.time}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-500">{match.venue}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                match.winner
+                                  ? "bg-green-100 text-green-800"
+                                  : match.isAbandoned
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : "bg-blue-100 text-blue-800"
+                              }`}>
+                                {match.winner || (match.isAbandoned ? "Abandoned" : "Pending")}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleUpdateMatchResult(match)}
+                                disabled={updateMatchResultMutation.isPending}
+                              >
+                                {match.winner ? "Reset Result" : match.isAbandoned ? "Reset Abandoned" : "Set Result"}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                </TabsContent>
-                
-                <TabsContent value="settings">
-                  <div className="py-12 text-center">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-2">System Settings</h3>
-                    <p className="text-gray-600">Coming soon! System settings features are under development.</p>
-                  </div>
-                </TabsContent>
-              </Tabs>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </main>
       
       <Footer />
-      
-      <AddUserDialog 
-        isOpen={isAddUserDialogOpen} 
-        onClose={() => setIsAddUserDialogOpen(false)} 
+      <AddUserDialog
+        isOpen={isAddUserDialogOpen}
+        onClose={() => setIsAddUserDialogOpen(false)}
       />
     </div>
   );
