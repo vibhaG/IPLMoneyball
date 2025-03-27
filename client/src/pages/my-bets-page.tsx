@@ -31,7 +31,16 @@ const MyBetsPage = () => {
   });
 
   const { data: matches = [] } = useQuery<Match[]>({
-    queryKey: ["/api/matches"],
+    queryKey: ["/api/matches", "all"],
+    queryFn: async () => {
+      const response = await fetch("/api/matches?all=true", {
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch matches');
+      }
+      return response.json();
+    },
     enabled: !!user?.id
   });
 

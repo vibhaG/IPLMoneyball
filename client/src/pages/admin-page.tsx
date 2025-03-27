@@ -33,22 +33,19 @@ const AdminPage = () => {
   const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["/api/users"],
     queryFn: async () => {
-      console.log('Fetching users...');
-      const response = await fetch("/api/users", {
-        credentials: 'include'
-      });
-      console.log('Users response status:', response.status);
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Error response:', errorText);
-        throw new Error('Failed to fetch users');
-      }
+      const response = await apiRequest("GET", "/api/users");
       return response.json();
-    }
+    },
+    enabled: !!user?.id && user.role === "admin"
   });
 
   const { data: matches = [], isLoading: matchesLoading } = useQuery<Match[]>({
-    queryKey: ["/api/matches"],
+    queryKey: ["/api/matches", "all"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/matches?all=true");
+      return response.json();
+    },
+    enabled: !!user?.id && user.role === "admin"
   });
 
   const form = useForm<UserFormData>({
@@ -89,10 +86,11 @@ const AdminPage = () => {
       return response.json();
     },
     onSuccess: (updatedMatch) => {
-      queryClient.setQueryData(["/api/matches"], (oldData: Match[] | undefined) => {
-        if (!oldData) return [updatedMatch];
-        return oldData.map(match => match.id === updatedMatch.id ? updatedMatch : match);
-      });
+      queryClient.invalidateQueries({ queryKey: ["/api/matches"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leaderboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bets/match/all"] });
+      
       toast({
         title: "Match updated",
         description: "Match result has been updated successfully",

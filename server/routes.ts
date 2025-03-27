@@ -58,7 +58,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get upcoming matches
+  // Get matches (all or upcoming)
   app.get("/api/matches", async (req, res) => {
     console.log(" In GET /api/matches");
     console.log(req);
@@ -68,7 +68,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     try {
-      const matches = await storage.getUpcomingMatches();
+      const showAll = req.query.all === 'true';
+      const matches = showAll ? await storage.getAllMatches() : await storage.getUpcomingMatches();
       console.log(" In GET /api/matches" + matches);
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
@@ -168,6 +169,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching bet:", error);
       res.status(500).json({ message: "Failed to fetch bet" });
+    }
+  });
+
+  // Get all bets for a specific match
+  app.get("/api/bets/match/:matchId/all", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    
+    try {
+      const matchId = parseInt(req.params.matchId);
+      const bets = await storage.getMatchBets(matchId);
+      res.json(bets);
+    } catch (error) {
+      console.error("Error fetching match bets:", error);
+      res.status(500).json({ message: "Failed to fetch match bets" });
     }
   });
 

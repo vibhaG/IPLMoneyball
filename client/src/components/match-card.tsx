@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Match, InsertBet, Bet } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -42,20 +42,38 @@ const MatchCard = ({ match }: MatchCardProps) => {
   const [betAmount, setBetAmount] = useState<string>("");
   const { toast } = useToast();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
 
   // Fetch existing bet for this match
   const { data: existingBet, isLoading } = useQuery<Bet | null>({
     queryKey: ["/api/bets/match", match.id],
     queryFn: async () => {
-  //    console.log("Fetching bet for match:", match.id);
       const response = await apiRequest("GET", `/api/bets/match/${match.id}`);
-    //  console.log("Bet response:", response);
       return await response.json() as Bet | null;
     },
     enabled: !!user?.id,
   });
 
-  //console.log("MatchCard render - user:", user?.id, "match:", match.id, "existingBet:", existingBet);
+  // Fetch all bets for this match to calculate odds
+  const { data: matchBets = [] } = useQuery<Bet[]>({
+    queryKey: ["/api/bets/match/all", match.id],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/bets/match/${match.id}/all`);
+      return await response.json() as Bet[];
+    }
+  });
+
+  // Calculate odds for each team
+  const team1Bets = matchBets.filter(bet => bet.selectedTeam === match.team1);
+  const team2Bets = matchBets.filter(bet => bet.selectedTeam === match.team2);
+  
+  const team1Total = team1Bets.reduce((sum, bet) => sum + bet.amount, 0);
+  const team2Total = team2Bets.reduce((sum, bet) => sum + bet.amount, 0);
+  const totalPool = team1Total + team2Total;
+
+  // Format odds as percentages
+  const team1Odds = totalPool > 0 ? Math.round((team1Total / totalPool) * 100) : 50;
+  const team2Odds = totalPool > 0 ? Math.round((team2Total / totalPool) * 100) : 50;
 
   // Initialize form with existing bet data
   useEffect(() => {
@@ -69,7 +87,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
     mutationFn: async (betData: InsertBet) => {
       if (existingBet?.id) {
         // Update existing bet
-        console.log("Exisitng bet is "+ existingBet.id);
+        console.log("Existing bet is "+ existingBet.id);
         const response = await apiRequest("PUT", `/api/bets/${existingBet.id}`, betData);
         console.log("Bet Data after " + betData);
         return await response.json() as Bet;
@@ -88,6 +106,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: ["/api/bets"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bets/match", match.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bets/match/all", match.id] });
     },
     onError: (error: Error) => {
       toast({
@@ -167,6 +186,9 @@ const MatchCard = ({ match }: MatchCardProps) => {
               />
             </div>
             <p className="mt-2 font-semibold text-gray-800">{match.team1}</p>
+            <p className="text-sm text-gray-500">({team1Odds}%)</p>
+            <p className="text-sm text-gray-500">({team1Total})</p>
+
           </div>
 
           <div className="text-center">
@@ -183,6 +205,8 @@ const MatchCard = ({ match }: MatchCardProps) => {
               />
             </div>
             <p className="mt-2 font-semibold text-gray-800">{match.team2}</p>
+            <p className="text-sm text-gray-500">({team2Odds}%)</p>
+            <p className="text-sm text-gray-500">({team2Total})</p>
           </div>
         </div>
 

@@ -484,52 +484,156 @@ export class MongoDBStorage implements IStorage {
     const match = await this.getMatch(id);
     if (!match) return undefined;
     const matchBets = await this.getMatchBets(id);
+    
+    // Get the previous state before updating
+    const previousWinner = match.winner;
+    const wasAbandoned = match.isAbandoned;
+
+    // Update match result
     await this.matches.updateOne(
       { id },
       { 
         $set: { 
-          winner : winner,
-          isAbandoned : isAbandoned
+          winner: winner,
+          isAbandoned: isAbandoned
         }
       }
     );
-    if(this.scores==null){
+
+    if (this.scores == null) {
       console.log("scores collection not found");
       return undefined;
     }
-    // If match is being marked as abandoned, return all bets
+
+    // If match is being marked as abandoned
     if (isAbandoned) {
-      for (const bet of matchBets) {
+      // If it was previously won by someone, first deduct their points
+      if (previousWinner) {
+        const previousWinningBets = matchBets.filter(bet => bet.selectedTeam === previousWinner);
+        const previousTotalPool = matchBets.reduce((sum, bet) => sum + bet.amount, 0);
         
-        await this.scores.updateOne(
-            { userId: bet.userId },
-            { $inc: { points: bet.amount } }, // Refund bet amount
-            { upsert: true }
-        );
-    }
-      console.log(`Match ${id} abandoned. ${matchBets.length} bets to be refunded.`);
-    }else if(winner !== null){
-      const totalBetPool = matchBets.reduce((sum, bet) => sum + bet.amount, 0);
-      const winningBets = matchBets.filter(bet => bet.selectedTeam === winner);
-      const numWinners = winningBets.length;
-
-      if (numWinners === 0) {
-          console.log("No winning bets. House keeps the pool.");
-          return;
-      }
-
-      // Distribute points among winners
-      const pointsPerWinner = totalBetPool / numWinners;
-
-      for (const bet of winningBets) {
+        // Refund points to previous winners based on their bet amounts
+        for (const bet of previousWinningBets) {
+          const pointsToDeduct = (bet.amount / previousTotalPool) * previousTotalPool;
           await this.scores.updateOne(
-              { userId: bet.userId },
-              { $inc: { points: pointsPerWinner } },
-              { upsert: true }
+            { userId: bet.userId },
+            { $inc: { points: -pointsToDeduct } },
+            { upsert: true }
           );
+        }
       }
 
-      console.log(`Match result processed. ${pointsPerWinner} points awarded to ${numWinners} winners.`);
+      // Refund all bettors their original bet amounts
+      for (const bet of matchBets) {
+        await this.scores.updateOne(
+          { userId: bet.userId },
+          { $inc: { points: bet.amount } },
+          { upsert: true }
+        );
+      }
+      console.log(`Match ${id} abandoned. ${matchBets.length} bets to be refunded.`);
+    } 
+    // If match is being reset from abandoned state
+    else if (wasAbandoned) {
+      // Deduct refunded amounts from all bettors
+      for (const bet of matchBets) {
+        await this.scores.updateOne(
+          { userId: bet.userId },
+          { $inc: { points: -bet.amount } },
+          { upsert: true }
+        );
+      }
+      console.log(`Match ${id} reset from abandoned state. ${matchBets.length} refunds to be reversed.`);
+    }
+    // If setting a new winner
+    else if (winner !== null) {
+      console.log("Setting a new winner");
+      // If there was a previous winner, first handle their points
+      if (previousWinner) {
+        const previousWinningBets = matchBets.filter(bet => bet.selectedTeam === previousWinner);
+        const previousTotalPool = matchBets.reduce((sum, bet) => sum + bet.amount, 0);
+        
+        // Deduct points from previous winners based on their bet amounts
+        for (const bet of previousWinningBets) {
+          const pointsToDeduct = (bet.amount / previousTotalPool) * previousTotalPool;
+          await this.scores.updateOne(
+            { userId: bet.userId },
+            { $inc: { points: -pointsToDeduct } },
+            { upsert: true }
+          );
+        }
+
+        // Refund points to all bettors
+        for (const bet of matchBets) {
+          await this.scores.updateOne(
+            { userId: bet.userId },
+            { $inc: { points: bet.amount } },
+            { upsert: true }
+          );
+        }
+      }
+
+      // Calculate new points distribution
+      const totalPool = matchBets.reduce((sum, bet) => sum + bet.amount, 0);
+      const winningBets = matchBets.filter(bet => bet.selectedTeam === winner);
+      const losingBets = matchBets.filter(bet => bet.selectedTeam !== winner);
+
+      // Award points to winners based on their bet amounts
+      for (const bet of winningBets) {
+        console.log("Winning bet section");
+        const winningTotal = winningBets.reduce((sum, bet) => sum + bet.amount, 0);
+        console.log("Winning total is "+ winningTotal);
+        const pointsToAward = (bet.amount / winningTotal) * totalPool;
+        console.log(`Awarding ${pointsToAward} points to user ${bet.userId} for winning bet ${bet.id}`);
+        await this.scores.updateOne(
+          { userId: bet.userId },
+          { $inc: { points: pointsToAward } },
+          { upsert: true }
+        );
+      }
+
+      // Deduct points from losers based on their bet amounts
+      for (const bet of losingBets) {
+        await this.scores.updateOne(
+          { userId: bet.userId },
+          { $inc: { points: -bet.amount } },
+          { upsert: true }
+        );
+      }
+
+      console.log(`Match result processed. Points distributed based on bet amounts.`);
+    } 
+    // If resetting winner to null
+    else if (previousWinner) {
+      // Deduct points from previous winners
+      console.log("Resetting winner to null");
+      const previousWinningBets = matchBets.filter(bet => bet.selectedTeam === previousWinner);
+      console.log("Previous winning bets total is "+ previousWinningBets.reduce((sum, bet) => sum + bet.amount, 0));
+      const previousTotalPool = matchBets.reduce((sum, bet) => sum + bet.amount, 0);
+      console.log("Previous total pool is "+ previousTotalPool);
+      
+      for (const bet of previousWinningBets) {
+        const pointsToDeduct = (bet.amount / 
+          previousWinningBets.reduce((sum, bet) => sum + bet.amount, 0)) * previousTotalPool;
+        console.log("Points to deduct is "+ pointsToDeduct);
+        await this.scores.updateOne(
+          { userId: bet.userId },
+          { $inc: { points: -pointsToDeduct } },
+          { upsert: true }
+        );
+      }
+      const previousLosingBets = matchBets.filter(bet => bet.selectedTeam != previousWinner);
+      console.log("Previous losing bets total is "+ previousLosingBets.reduce((sum, bet) => sum + bet.amount, 0));
+
+      // Refund points to all loosing players
+      for (const bet of previousLosingBets) {
+        await this.scores.updateOne(
+          { userId: bet.userId },
+          { $inc: { points: bet.amount } },
+          { upsert: true }
+        );
+      }
+      console.log(`Match ${id} winner reset. ${matchBets.length} bets to be refunded.`);
     }
 
     return this.getMatch(id);
