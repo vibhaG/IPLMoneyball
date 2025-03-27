@@ -14,6 +14,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import AddUserDialog from "@/components/add-user-dialog";
 import { apiRequest } from "@/lib/queryClient";
+import SelectWinnerDialog from "@/components/select-winner-dialog";
 
 const userSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -29,6 +30,7 @@ const AdminPage = () => {
   const queryClient = useQueryClient();
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const { toast } = useToast();
+  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   
   const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["/api/users"],
@@ -112,16 +114,19 @@ const AdminPage = () => {
   const handleUpdateMatchResult = (match: Match) => {
     if (match.winner) {
       updateMatchResultMutation.mutate({ matchId: match.id, winner: null, isAbandoned: false });
-    } else if (match.isAbandoned) {
-      updateMatchResultMutation.mutate({ matchId: match.id, winner: null, isAbandoned: false });
     } else {
-      // Show dialog to select winner or mark as abandoned
-      const winner = window.prompt(`Enter winner (${match.team1} or ${match.team2}) or type 'abandoned':`);
-      if (winner === 'abandoned') {
-        updateMatchResultMutation.mutate({ matchId: match.id, winner: null, isAbandoned: true });
-      } else if (winner === match.team1 || winner === match.team2) {
-        updateMatchResultMutation.mutate({ matchId: match.id, winner, isAbandoned: false });
-      }
+      setSelectedMatch(match);
+    }
+  };
+
+  const handleWinnerSelect = (winner: string | null) => {
+    if (selectedMatch) {
+      updateMatchResultMutation.mutate({ 
+        matchId: selectedMatch.id, 
+        winner, 
+        isAbandoned: false 
+      });
+      setSelectedMatch(null);
     }
   };
 
@@ -258,11 +263,9 @@ const AdminPage = () => {
                               <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                                 match.winner
                                   ? "bg-green-100 text-green-800"
-                                  : match.isAbandoned
-                                  ? "bg-yellow-100 text-yellow-800"
                                   : "bg-blue-100 text-blue-800"
                               }`}>
-                                {match.winner || (match.isAbandoned ? "Abandoned" : "Pending")}
+                                {match.winner || "No Result"}
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -272,7 +275,7 @@ const AdminPage = () => {
                                 onClick={() => handleUpdateMatchResult(match)}
                                 disabled={updateMatchResultMutation.isPending}
                               >
-                                {match.winner ? "Reset Result" : match.isAbandoned ? "Reset Abandoned" : "Set Result"}
+                                {match.winner ? "Reset Result" : "Set Result"}
                               </Button>
                             </td>
                           </tr>
@@ -286,6 +289,14 @@ const AdminPage = () => {
           </div>
         </div>
       </main>
+      
+      <SelectWinnerDialog
+        isOpen={!!selectedMatch}
+        onClose={() => setSelectedMatch(null)}
+        onSelect={handleWinnerSelect}
+        team1={selectedMatch?.team1 || ""}
+        team2={selectedMatch?.team2 || ""}
+      />
       
       <Footer />
       <AddUserDialog
