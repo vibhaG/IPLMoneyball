@@ -55,7 +55,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
     enabled: !!user?.id,
   });
 
-  console.log("MatchCard render - user:", user?.id, "match:", match.id, "existingBet:", existingBet);
+  //console.log("MatchCard render - user:", user?.id, "match:", match.id, "existingBet:", existingBet);
 
   // Initialize form with existing bet data
   useEffect(() => {
@@ -70,8 +70,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
       if (existingBet?.id) {
         // Update existing bet
         console.log("Exisitng bet is "+ existingBet.id);
-        console.log("Bet Data before " + betData);
-        const response = await apiRequest("PUT", "/api/bets", betData);
+        const response = await apiRequest("PUT", `/api/bets/${existingBet.id}`, betData);
         console.log("Bet Data after " + betData);
         return await response.json() as Bet;
       } else {

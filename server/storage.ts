@@ -35,6 +35,7 @@ export interface IStorage {
   createBet(bet: InsertBet): Promise<Bet>;
   getUserBets(userId: number): Promise<Bet[]>;
   getMatchBets(matchId: number): Promise<Bet[]>;
+  getAllScores(): Promise<Score[]>;
 
   sessionStore: any;
 
@@ -542,6 +543,15 @@ export class MongoDBStorage implements IStorage {
     );
     return result.modifiedCount > 0;
   }
+
+  async getAllScores(): Promise<Score[]> {
+    if (!this.scores) return [];
+    const scoresList = await this.scores.find().toArray();
+    return scoresList.map(score => ({
+      userId: score.userId,
+      points: score.points
+    }));
+  }
 }
 
 // In-memory Storage implementation for fallback
@@ -748,6 +758,10 @@ export class MemStorage implements IStorage {
       password: newPassword
     };
     return true;
+  }
+
+  async getAllScores(): Promise<Score[]> {
+    return []; // MemStorage doesn't support scores
   }
 }
 

@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { setupAuth } from "./auth";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { InsertMatch, insertMatchSchema, Match, insertBetSchema, InsertBet, Bet } from "@shared/schema";
+import { InsertMatch, insertMatchSchema, Match, insertBetSchema, InsertBet, Bet, LeaderboardEntry } from "@shared/schema";
 import { Parentheses } from "lucide-react";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -296,6 +296,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: fromZodError(error).message });
       }
       res.status(500).json({ message: "Failed to update bet" });
+    }
+  });
+
+  // Get leaderboard
+  app.get("/api/leaderboard", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    
+    try {
+      const users = await storage.getAllUsers();
+      const scores = await storage.getAllScores();
+      const allBets = await Promise.all(users.map(user => storage.getUserBets(user.id!)));
+      const allMatches = await storage.getAllMatches();
+
+      const leaderboard = users.map((user, index) => {
+        const userScores = scores.filter(score => score.userId === user.id);
+        const userBets = allBets[index];
+        const totalPoints = userScores.reduce((sum, score) => sum + score.points, 0);
+        
+        // Calculate winning bets by checking match results
+        const winningBets = userBets.filter(bet => {
+          const match = allMatches.find(m => m.id === bet.matchId);
+          return match?.winner === bet.selectedTeam;
+        }).length;
+        
+        const totalBets = userBets.length;
+        const winRate = totalBets > 0 ? (winningBets / totalBets) * 100 : 0;
+
+        return {
+          userId: user.id,
+          fullName: user.fullName,
+          totalPoints,
+          winningBets,
+          totalBets,
+          winRate
+        };
+      });
+
+      // Sort by points in descending order
+      leaderboard.sort((a, b) => b.totalPoints - a.totalPoints);
+
+      // Add rank to each entry
+      const leaderboardWithRank = leaderboard.map((entry, index) => ({
+        ...entry,
+        rank: index + 1
+      }));
+
+      res.json(leaderboardWithRank);
+    } catch (error) {
+      console.error("Error fetching leaderboard:", error);
+      res.status(500).json({ success: false, message: "Failed to fetch leaderboard" });
     }
   });
 

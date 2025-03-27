@@ -13,6 +13,19 @@ interface LeaderboardEntry {
 const LeaderboardPage = () => {
   const { data: leaderboard = [], isLoading } = useQuery<LeaderboardEntry[]>({
     queryKey: ["/api/leaderboard"],
+    queryFn: async () => {
+      console.log('Fetching leaderboard...');
+      const response = await fetch("/api/leaderboard", {
+        credentials: 'include'
+      });
+      console.log('Leaderboard response status:', response.status);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        throw new Error('Failed to fetch leaderboard');
+      }
+      return response.json();
+    }
   });
 
   return (
