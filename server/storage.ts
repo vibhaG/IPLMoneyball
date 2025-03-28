@@ -6,6 +6,7 @@ import {
   User,
   Match,
   Bet,
+  Score,
   InsertUser,
   InsertMatch,
   InsertBet,
@@ -19,7 +20,7 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  getAllUsers(): Promise<User[]>;
+  getAllUsers(): Promise<UserWithoutPassword[]>;
   updateUser(id: number, updates: Partial<User>): Promise<User | undefined>;
   deactivateUser(id: number): Promise<boolean>;
 
@@ -27,12 +28,27 @@ export interface IStorage {
   getMatch(id: number): Promise<Match | undefined>;
   getAllMatches(): Promise<Match[]>;
   getUpcomingMatches(): Promise<Match[]>;
+  updateMatchResult(id: number, winner: string | null, isAbandoned: boolean): Promise<Match | undefined>;
+  getUserBetsForMatch(userId: number, matchId: number): Promise<Bet | undefined>;
+  updateBet(betId: number, updates: Partial<Bet>): Promise<Bet | undefined>;
 
   createBet(bet: InsertBet): Promise<Bet>;
   getUserBets(userId: number): Promise<Bet[]>;
   getMatchBets(matchId: number): Promise<Bet[]>;
+  getAllScores(): Promise<Score[]>;
 
   sessionStore: any;
+
+  updateUserPassword(userId: number, newPassword: string): Promise<boolean>;
+}
+
+interface UserWithoutPassword {
+  id?: number;
+  _id?: ObjectId;
+  username: string;
+  fullName: string;
+  role: "user" | "admin";
+  isActive: boolean;
 }
 
 // MongoDB implementation of Storage
@@ -41,6 +57,7 @@ export class MongoDBStorage implements IStorage {
   private users: Collection | null = null;
   private matches: Collection | null = null;
   private bets: Collection | null = null;
+  private scores: Collection | null = null;
   public sessionStore: any;
   private connected: boolean = false;
 
@@ -71,7 +88,10 @@ export class MongoDBStorage implements IStorage {
         this.users = this.db.collection("users");
         this.matches = this.db.collection("matches");
         this.bets = this.db.collection("bets");
-
+        this.scores = this.db.collection("scores");
+        // Create unique compound index for bets
+        await this.bets.createIndex({ userId: 1, matchId: 1 }, { unique: true });
+        await this.scores.createIndex({ userId: 1 }, { unique: true });
         // Initialize counters from existing data
         await this.initializeCounters();
 
@@ -167,6 +187,8 @@ export class MongoDBStorage implements IStorage {
         venue: venues[venueIndex],
         matchDate: matchDate,
         time: times[timeIndex],
+        winner: null,
+        isAbandoned: false
       });
     }
   }
@@ -235,15 +257,14 @@ export class MongoDBStorage implements IStorage {
     return user;
   }
 
-  async getAllUsers(): Promise<User[]> {
+  async getAllUsers(): Promise<UserWithoutPassword[]> {
     if (!this.users) return [];
     const usersList = await this.users.find().toArray();
 
-    // Convert MongoDB documents to User types
+    // Convert MongoDB documents to User types and remove passwords
     return usersList.map((user) => ({
       id: user.id,
       username: user.username,
-      password: user.password,
       fullName: user.fullName,
       role: user.role,
       isActive: user.isActive,
@@ -275,7 +296,12 @@ export class MongoDBStorage implements IStorage {
     if (!this.matches) throw new Error("Database connection not established");
 
     const id = ++this.counters.matchId;
-    const match: Match = { ...insertMatch, id };
+    const match: Match = { 
+      ...insertMatch, 
+      id,
+      winner: null,
+      isAbandoned: false
+    };
 
     // Convert to plain object before inserting
     const matchDoc = {
@@ -285,6 +311,8 @@ export class MongoDBStorage implements IStorage {
       venue: match.venue,
       matchDate: match.matchDate,
       time: match.time,
+      winner: match.winner,
+      isAbandoned: match.isAbandoned
     };
 
     await this.matches.insertOne(matchDoc);
@@ -304,6 +332,8 @@ export class MongoDBStorage implements IStorage {
       venue: match.venue,
       matchDate: match.matchDate,
       time: match.time,
+      winner: match.winner,
+      isAbandoned: match.isAbandoned
     };
   }
 
@@ -319,6 +349,8 @@ export class MongoDBStorage implements IStorage {
       venue: match.venue,
       matchDate: match.matchDate,
       time: match.time,
+      winner: match.winner,
+      isAbandoned: match.isAbandoned
     }));
   }
 
@@ -326,13 +358,15 @@ export class MongoDBStorage implements IStorage {
     console.log("getUpcomingMatches called");
     if (!this.matches) return [];
     console.log("getUpcomingMatches called 1");
-    const now = Date. now();
+    const now = new Date();
+    console.log('Current date:', now);
     const upcomingMatches = await this.matches
-    .find()
-      //HACK: This is a workaround for the fact that the matchDate field is a Date type in MongoDB, but the date
-     // .find({ matchDate: { $gt: now } })
+      .find({ 
+        matchDate: { $gt: now }
+      })
       .sort({ matchDate: 1 })
       .toArray();
+    console.log('All matches:', upcomingMatches);
 
     // Convert MongoDB documents to Match types
     return upcomingMatches.map((match) => ({
@@ -342,6 +376,8 @@ export class MongoDBStorage implements IStorage {
       venue: match.venue,
       matchDate: match.matchDate,
       time: match.time,
+      winner: match.winner,
+      isAbandoned: match.isAbandoned
     }));
   }
 
@@ -362,6 +398,13 @@ export class MongoDBStorage implements IStorage {
     };
 
     await this.bets.insertOne(betDoc);
+  /*  await this.bets.updateOne(
+      {id: bet.id,},
+      { userId: bet.userId },
+      {matchId: bet.matchId},
+      {selectedTeam: bet.selectedTeam},
+      { upsert: true }
+  );*/
     return bet;
   }
 
@@ -392,6 +435,175 @@ export class MongoDBStorage implements IStorage {
       selectedTeam: bet.selectedTeam,
       amount: bet.amount,
       createdAt: bet.createdAt,
+    }));
+  }
+
+  async getUserBetsForMatch(userId: number, matchId: number): Promise<Bet | undefined> {
+    if (!this.bets) return undefined;
+    const bet = await this.bets.findOne({ userId, matchId });
+    if (!bet) return undefined;
+    return {
+      id: bet.id,
+      userId: bet.userId,
+      matchId: bet.matchId,
+      selectedTeam: bet.selectedTeam,
+      amount: bet.amount,
+      createdAt: bet.createdAt,
+    };
+  }
+
+  async updateBet(betId: number, updates: Partial<Bet>): Promise<Bet | undefined> {
+    if (!this.bets) return undefined;
+    
+    // Check if match is still upcoming
+    const bet = await this.bets.findOne({ id: betId });
+    if (!bet) return undefined;
+
+    const match = await this.getMatch(bet.matchId);
+    if (!match || match.matchDate <= new Date() || match.winner || match.isAbandoned) {
+      return undefined;
+    }
+
+    await this.bets.updateOne({ id: betId }, { $set: updates });
+    const updatedBet = await this.bets.findOne({ id: betId });
+    if (!updatedBet) return undefined;
+
+    return {
+      id: updatedBet.id,
+      userId: updatedBet.userId,
+      matchId: updatedBet.matchId,
+      selectedTeam: updatedBet.selectedTeam,
+      amount: updatedBet.amount,
+      createdAt: updatedBet.createdAt,
+    };
+  }
+
+  async updateMatchResult(id: number, winner: string | null, isAbandoned: boolean): Promise<Match | undefined> {
+    if (!this.matches) return undefined;
+
+    const match = await this.getMatch(id);
+    if (!match) return undefined;
+    const matchBets = await this.getMatchBets(id);
+    
+    // Get the previous state before updating
+    const previousWinner = match.winner;
+
+    // Update match result
+    await this.matches.updateOne(
+      { id },
+      { 
+        $set: { 
+          winner: winner,
+          isAbandoned: false
+        }
+      }
+    );
+
+    if (this.scores == null) {
+      console.log("scores collection not found");
+      return undefined;
+    }
+
+    // If setting a new winner
+    if (winner !== null) {
+      // If there was a previous winner, first handle their points
+      if (previousWinner) {
+        const previousWinningBets = matchBets.filter(bet => bet.selectedTeam === previousWinner);
+        const previousTotalPool = matchBets.reduce((sum, bet) => sum + bet.amount, 0);
+        
+        // Deduct points from previous winners based on their bet amounts
+        for (const bet of previousWinningBets) {
+          const pointsToDeduct = (bet.amount / previousTotalPool) * previousTotalPool;
+          await this.scores.updateOne(
+            { userId: bet.userId },
+            { $inc: { points: -pointsToDeduct } },
+            { upsert: true }
+          );
+        }
+
+        // Refund points to all bettors
+        for (const bet of matchBets) {
+          await this.scores.updateOne(
+            { userId: bet.userId },
+            { $inc: { points: bet.amount } },
+            { upsert: true }
+          );
+        }
+      }
+
+      // Calculate new points distribution
+      const totalPool = matchBets.reduce((sum, bet) => sum + bet.amount, 0);
+      const winningBets = matchBets.filter(bet => bet.selectedTeam === winner);
+      const losingBets = matchBets.filter(bet => bet.selectedTeam !== winner);
+
+      // Award points to winners based on their bet amounts
+      for (const bet of winningBets) {
+        const winningTotal = winningBets.reduce((sum, bet) => sum + bet.amount, 0);
+        const pointsToAward = (bet.amount / winningTotal) * totalPool;
+        await this.scores.updateOne(
+          { userId: bet.userId },
+          { $inc: { points: pointsToAward } },
+          { upsert: true }
+        );
+      }
+
+      // Deduct points from losers based on their bet amounts
+      for (const bet of losingBets) {
+        await this.scores.updateOne(
+          { userId: bet.userId },
+          { $inc: { points: -bet.amount } },
+          { upsert: true }
+        );
+      }
+
+      console.log(`Match result processed. Points distributed based on bet amounts.`);
+    } 
+    // If resetting winner to null
+    else if (previousWinner) {
+      // Deduct points from previous winners
+      const previousWinningBets = matchBets.filter(bet => bet.selectedTeam === previousWinner);
+      const previousTotalPool = matchBets.reduce((sum, bet) => sum + bet.amount, 0);
+      
+      for (const bet of previousWinningBets) {
+        const pointsToDeduct = (bet.amount / 
+          previousWinningBets.reduce((sum, bet) => sum + bet.amount, 0)) * previousTotalPool;
+        await this.scores.updateOne(
+          { userId: bet.userId },
+          { $inc: { points: -pointsToDeduct } },
+          { upsert: true }
+        );
+      }
+
+      // Refund points to all losing players
+      const previousLosingBets = matchBets.filter(bet => bet.selectedTeam !== previousWinner);
+      for (const bet of previousLosingBets) {
+        await this.scores.updateOne(
+          { userId: bet.userId },
+          { $inc: { points: bet.amount } },
+          { upsert: true }
+        );
+      }
+      console.log(`Match ${id} winner reset. ${matchBets.length} bets to be refunded.`);
+    }
+
+    return this.getMatch(id);
+  }
+
+  async updateUserPassword(userId: number, newPassword: string): Promise<boolean> {
+    if (!this.users) return false;
+    const result = await this.users.updateOne(
+      { id: userId },
+      { $set: { password: newPassword } }
+    );
+    return result.modifiedCount > 0;
+  }
+
+  async getAllScores(): Promise<Score[]> {
+    if (!this.scores) return [];
+    const scoresList = await this.scores.find().toArray();
+    return scoresList.map(score => ({
+      userId: score.userId,
+      points: score.points
     }));
   }
 }
@@ -473,6 +685,8 @@ export class MemStorage implements IStorage {
         venue: venues[venueIndex],
         matchDate: matchDate,
         time: times[timeIndex],
+        winner: null,
+        isAbandoned: false
       });
     }
   }
@@ -499,8 +713,14 @@ export class MemStorage implements IStorage {
     return user;
   }
 
-  async getAllUsers(): Promise<User[]> {
-    return this.users;
+  async getAllUsers(): Promise<UserWithoutPassword[]> {
+    return this.users.map((user) => ({
+      id: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      role: user.role,
+      isActive: user.isActive,
+    }));
   }
 
   async updateUser(
@@ -561,6 +781,41 @@ export class MemStorage implements IStorage {
 
   async getMatchBets(matchId: number): Promise<Bet[]> {
     return this.bets.filter((bet) => bet.matchId === matchId);
+  }
+
+  async getUserBetsForMatch(userId: number, matchId: number): Promise<Bet | undefined> {
+    return this.bets.find((bet) => bet.userId === userId && bet.matchId === matchId);
+  }
+
+  async updateBet(betId: number, updates: Partial<Bet>): Promise<Bet | undefined> {
+    const index = this.bets.findIndex((bet) => bet.id === betId);
+    if (index === -1) return undefined;
+
+    this.bets[index] = { ...this.bets[index], ...updates };
+    return this.bets[index];
+  }
+
+  async updateMatchResult(id: number, winner: string | null, isAbandoned: boolean): Promise<Match | undefined> {
+    const index = this.matches.findIndex((match) => match.id === id);
+    if (index === -1) return undefined;
+
+    this.matches[index] = { ...this.matches[index], winner, isAbandoned };
+    return this.matches[index];
+  }
+
+  async updateUserPassword(userId: number, newPassword: string): Promise<boolean> {
+    const userIndex = this.users.findIndex(user => user.id === userId);
+    if (userIndex === -1) return false;
+    
+    this.users[userIndex] = {
+      ...this.users[userIndex],
+      password: newPassword
+    };
+    return true;
+  }
+
+  async getAllScores(): Promise<Score[]> {
+    return []; // MemStorage doesn't support scores
   }
 }
 

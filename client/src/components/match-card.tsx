@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { Match, InsertBet } from "@shared/schema";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Match, InsertBet, Bet } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { format } from "date-fns";
+import { useAuth } from "@/hooks/use-auth";
 
 // Cricket team logos as SVG icons
 const teamLogos: Record<string, string> = {
@@ -40,28 +41,76 @@ const MatchCard = ({ match }: MatchCardProps) => {
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [betAmount, setBetAmount] = useState<string>("");
   const { toast } = useToast();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Fetch existing bet for this match
+  const { data: existingBet, isLoading } = useQuery<Bet | null>({
+    queryKey: ["/api/bets/match", match.id],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/bets/match/${match.id}`);
+      return await response.json() as Bet | null;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Fetch all bets for this match to calculate odds
+  const { data: matchBets = [] } = useQuery<Bet[]>({
+    queryKey: ["/api/bets/match/all", match.id],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/bets/match/${match.id}/all`);
+      return await response.json() as Bet[];
+    }
+  });
+
+  // Calculate odds for each team
+  const team1Bets = matchBets.filter(bet => bet.selectedTeam === match.team1);
+  const team2Bets = matchBets.filter(bet => bet.selectedTeam === match.team2);
+  
+  const team1Total = team1Bets.reduce((sum, bet) => sum + bet.amount, 0);
+  const team2Total = team2Bets.reduce((sum, bet) => sum + bet.amount, 0);
+  const totalPool = team1Total + team2Total;
+
+  // Format odds as percentages
+  const team1Odds = totalPool > 0 ? Math.round((team1Total / totalPool) * 100) : 50;
+  const team2Odds = totalPool > 0 ? Math.round((team2Total / totalPool) * 100) : 50;
+
+  // Initialize form with existing bet data
+  useEffect(() => {
+    if (existingBet) {
+      setSelectedTeam(existingBet.selectedTeam);
+      setBetAmount(existingBet.amount.toString());
+    }
+  }, [existingBet]);
 
   const betMutation = useMutation({
     mutationFn: async (betData: InsertBet) => {
-      const res = await apiRequest("POST", "/api/bets", betData);
-      return await res.json();
+      if (existingBet?.id) {
+        // Update existing bet
+        console.log("Existing bet is "+ existingBet.id);
+        const response = await apiRequest("PUT", `/api/bets/${existingBet.id}`, betData);
+        console.log("Bet Data after " + betData);
+        return await response.json() as Bet;
+      } else {
+        // Create new bet
+        const response = await apiRequest("POST", "/api/bets", betData);
+        return await response.json() as Bet;
+      }
     },
     onSuccess: () => {
       toast({
-        title: "Bet Placed!",
-        description: `You bet ${betAmount} on ${selectedTeam}`,
+        title: existingBet ? "Prediction Updated!" : "Prediction Placed!",
+        description: `You put ${betAmount} on ${selectedTeam}`,
       });
-
-      // Clear form state
-      setSelectedTeam(null);
-      setBetAmount("");
 
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: ["/api/bets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bets/match", match.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bets/match/all", match.id] });
     },
     onError: (error: Error) => {
       toast({
-        title: "Failed to place bet",
+        title: "Failed to pick team",
         description: error.message,
         variant: "destructive",
       });
@@ -69,19 +118,29 @@ const MatchCard = ({ match }: MatchCardProps) => {
   });
 
   const handlePlaceBet = () => {
+    
     if (!selectedTeam) {
       toast({
         title: "Team required",
-        description: "Please select a team to bet on",
+        description: "Please select a team",
         variant: "destructive",
       });
       return;
     }
-
+    console.log("Selected Team "+ selectedTeam );
     if (!betAmount) {
       toast({
         title: "Invalid amount",
         description: "Empty Amount",
+        variant: "destructive",
+      });
+      return;
+    }
+    console.log("Bet Amount "+ betAmount );
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "Please log in to play",
         variant: "destructive",
       });
       return;
@@ -91,7 +150,7 @@ const MatchCard = ({ match }: MatchCardProps) => {
       matchId: match.id,
       selectedTeam,
       amount: parseInt(betAmount),
-      userId: 0, // This will be set by the server based on the authenticated user
+      userId: user.id,
     });
   };
 
@@ -101,6 +160,9 @@ const MatchCard = ({ match }: MatchCardProps) => {
   // Get team logos
   const team1Logo = teamLogos[match.team1] || defaultLogo;
   const team2Logo = teamLogos[match.team2] || defaultLogo;
+
+  // Check if match is still bettable
+  const isMatchBettable = new Date(match.matchDate) > new Date() && !match.winner && !match.isAbandoned;
 
   return (
     <div className="bet-card bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
@@ -124,6 +186,9 @@ const MatchCard = ({ match }: MatchCardProps) => {
               />
             </div>
             <p className="mt-2 font-semibold text-gray-800">{match.team1}</p>
+            <p className="text-sm text-gray-500">({team1Odds}%)</p>
+            <p className="text-sm text-gray-500">({team1Total})</p>
+
           </div>
 
           <div className="text-center">
@@ -140,57 +205,70 @@ const MatchCard = ({ match }: MatchCardProps) => {
               />
             </div>
             <p className="mt-2 font-semibold text-gray-800">{match.team2}</p>
+            <p className="text-sm text-gray-500">({team2Odds}%)</p>
+            <p className="text-sm text-gray-500">({team2Total})</p>
           </div>
         </div>
 
-        <div className="border-t border-gray-100 pt-4">
-          <h4 className="text-sm font-semibold text-gray-500 mb-3">
-            Place Your Bet
-          </h4>
-          <div className="flex">
-            <Button
-              variant={selectedTeam === match.team1 ? "default" : "outline"}
-              className={`flex-1 mr-2 py-2 px-4 ${
-                selectedTeam === match.team1
-                  ? "bg-primary text-white"
-                  : "bg-white border border-primary text-primary hover:bg-primary hover:text-white"
-              } rounded-lg transition-colors duration-300`}
-              onClick={() => setSelectedTeam(match.team1)}
-            >
-              {match.team1}
-            </Button>
-            <Button
-              variant={selectedTeam === match.team2 ? "default" : "outline"}
-              className={`flex-1 py-2 px-4 ${
-                selectedTeam === match.team2
-                  ? "bg-secondary text-white"
-                  : "bg-white border border-secondary text-secondary hover:bg-secondary hover:text-white"
-              } rounded-lg transition-colors duration-300`}
-              onClick={() => setSelectedTeam(match.team2)}
-            >
-              {match.team2}
-            </Button>
+        {existingBet && (
+          <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+            <p className="text-sm text-blue-800">
+              Your current guess: {existingBet.amount} on {existingBet.selectedTeam}
+            </p>
           </div>
-          <div className="mt-3">
-            <Select value={betAmount} onValueChange={setBetAmount}>
-              <SelectTrigger className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                <SelectValue placeholder="Select bet amount" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="20">20</SelectItem>
-                <SelectItem value="30">30</SelectItem>
-              </SelectContent>
-            </Select>
+        )}
+
+        {isMatchBettable ? (
+          <div className="mt-6 space-y-4">
+            <div className="flex items-center space-x-2">
+              <Select value={selectedTeam || ""} onValueChange={setSelectedTeam}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select team" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={match.team1}>{match.team1}</SelectItem>
+                  <SelectItem value={match.team2}>{match.team2}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Select value={betAmount} onValueChange={setBetAmount}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select amount" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="30">30</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={handlePlaceBet}
+                disabled={betMutation.isPending}
+                className="bg-primary hover:bg-primary-dark text-white"
+              >
+                {existingBet ? "Update guess" : "Place guess"}
+              </Button>
+            </div>
           </div>
-          <Button
-            className="mt-3 w-full py-2 bg-accent hover:bg-accent-dark text-white font-semibold rounded-lg transition-colors duration-300"
-            onClick={handlePlaceBet}
-            disabled={betMutation.isPending}
-          >
-            {betMutation.isPending ? "Processing..." : "Confirm Bet"}
-          </Button>
-        </div>
+        ) : (
+          <div className="mt-6 text-center">
+            {match.winner ? (
+              <p className="text-lg font-semibold text-primary">
+                Winner: {match.winner}
+              </p>
+            ) : match.isAbandoned ? (
+              <p className="text-lg font-semibold text-red-500">
+                Match Abandoned
+              </p>
+            ) : (
+              <p className="text-lg font-semibold text-gray-500">
+                Match has started
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -14,9 +14,13 @@ export async function apiRequest(
 ): Promise<Response> {
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      "Accept": "application/json",
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
+    mode: "cors",
   });
 
   await throwIfResNotOk(res);
@@ -31,10 +35,20 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const res = await fetch(queryKey[0] as string, {
       credentials: "include",
+      mode: "cors",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
     });
 
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
+    if (res.status === 401) {
+      if (unauthorizedBehavior === "returnNull") {
+        return null;
+      }
+      // For protected routes, invalidate auth and throw
+      queryClient.setQueryData(["/api/user"], null);
+      throw new Error("Unauthorized");
     }
 
     await throwIfResNotOk(res);
@@ -44,11 +58,17 @@ export const getQueryFn: <T>(options: {
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
+      staleTime: 0,
+      retry: (failureCount, error) => {
+        // Don't retry on 401 errors
+        if (error instanceof Error && error.message.includes("401")) {
+          return false;
+        }
+        // Retry other errors up to 2 times
+        return failureCount < 2;
+      },
     },
     mutations: {
       retry: false,
