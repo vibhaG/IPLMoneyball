@@ -44,9 +44,9 @@ const SelectWinnerDialog = ({ isOpen, onClose, onSelect, team1, team2 }: SelectW
               <SelectValue placeholder="Select winner" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="1">{team1}</SelectItem>
-              <SelectItem value="2">{team2}</SelectItem>
-              <SelectItem value="3">No Result</SelectItem>
+              <SelectItem value={team1}>{team1}</SelectItem>
+              <SelectItem value={team2}>{team2}</SelectItem>
+              <SelectItem value="no-result">No Result</SelectItem>
             </SelectContent>
           </Select>
         </div>

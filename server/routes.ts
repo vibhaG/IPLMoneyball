@@ -4,8 +4,10 @@ import { storage } from "./storage";
 import { setupAuth } from "./auth";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { InsertMatch, insertMatchSchema, Match, insertBetSchema, InsertBet, Bet, LeaderboardEntry } from "@shared/schema";
+import { InsertMatch, insertMatchSchema, Match, insertBetSchema, InsertBet, Bet, LeaderboardEntry, ChatMessage, InsertChatMessage } from "@shared/schema";
 import { Parentheses } from "lucide-react";
+import { WebSocketServer } from 'ws';
+import { parse } from 'cookie';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup auth routes (/api/register, /api/login, /api/logout, /api/user)
@@ -368,7 +370,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get chat messages
+  app.get("/api/chat/messages", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    
+    try {
+      const messages = await storage.getChatMessages();
+      res.json(messages);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch chat messages" });
+    }
+  });
+
+  // Send chat message
+  app.post("/api/chat/messages", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    
+    try {
+      const messageData: InsertChatMessage = {
+        userId: req.user!.id!,
+        message: req.body.message
+      };
+      
+      const message = await storage.createChatMessage(messageData);
+      res.status(201).json(message);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
   const httpServer = createServer(app);
+
+  // Set up WebSocket server
+  const wss = new WebSocketServer({ server: httpServer });
+  const clients = new Map<number, WebSocket>();
+
+  wss.on('connection', async (ws, req) => {
+    const cookies = parse(req.headers.cookie || '');
+    const userCookie = cookies.user;
+    
+    if (!userCookie) {
+      ws.close();
+      return;
+    }
+
+    try {
+      const user = await storage.getUser(parseInt(userCookie));
+      if (!user) {
+        ws.close();
+        return;
+      }
+
+      clients.set(user.id!, ws);
+
+      ws.on('close', () => {
+        clients.delete(user.id!);
+      });
+    } catch (error) {
+      ws.close();
+    }
+  });
+
+  // Add broadcast function to storage
+  storage.broadcastMessage = (message: ChatMessage) => {
+    clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(message));
+      }
+    });
+  };
+
   return httpServer;
 }
 

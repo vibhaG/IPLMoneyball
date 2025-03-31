@@ -10,6 +10,8 @@ import {
   InsertUser,
   InsertMatch,
   InsertBet,
+  ChatMessage,
+  InsertChatMessage,
 } from "@shared/schema";
 import { connectToDatabase } from "./db";
 
@@ -40,6 +42,10 @@ export interface IStorage {
   sessionStore: any;
 
   updateUserPassword(userId: number, newPassword: string): Promise<boolean>;
+
+  getChatMessages(): Promise<ChatMessage[]>;
+  createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
+  broadcastMessage?(message: ChatMessage): void;
 }
 
 interface UserWithoutPassword {
@@ -58,8 +64,10 @@ export class MongoDBStorage implements IStorage {
   private matches: Collection | null = null;
   private bets: Collection | null = null;
   private scores: Collection | null = null;
+  private chatMessages: Collection | null = null;
   public sessionStore: any;
   private connected: boolean = false;
+  public broadcastMessage?: (message: ChatMessage) => void;
 
   private counters = {
     userId: 0,
@@ -89,6 +97,7 @@ export class MongoDBStorage implements IStorage {
         this.matches = this.db.collection("matches");
         this.bets = this.db.collection("bets");
         this.scores = this.db.collection("scores");
+        this.chatMessages = this.db.collection('chatMessages');
         // Create unique compound index for bets
         await this.bets.createIndex({ userId: 1, matchId: 1 }, { unique: true });
         await this.scores.createIndex({ userId: 1 }, { unique: true });
@@ -339,7 +348,7 @@ export class MongoDBStorage implements IStorage {
 
   async getAllMatches(): Promise<Match[]> {
     if (!this.matches) return [];
-    const matchesList = await this.matches.find().toArray();
+    const matchesList = await this.matches.find().sort({ matchDate: 1 }).toArray();
 
     // Convert MongoDB documents to Match types
     return matchesList.map((match) => ({
@@ -606,6 +615,52 @@ export class MongoDBStorage implements IStorage {
       points: score.points
     }));
   }
+
+  async getChatMessages(): Promise<ChatMessage[]> {
+    if (!this.chatMessages) return [];
+    
+    const messages = await this.chatMessages
+      .find()
+      .sort({ timestamp: -1 })
+      .limit(50)
+      .toArray();
+    
+    return messages.map(msg => ({
+      id: msg._id,
+      userId: msg.userId,
+      username: msg.username,
+      message: msg.message,
+      timestamp: msg.timestamp
+    }));
+  }
+
+  async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
+    if (!this.chatMessages) throw new Error('Chat messages collection not found');
+
+    const user = await this.getUser(message.userId);
+    if (!user) throw new Error('User not found');
+
+    const chatMessage = {
+      userId: message.userId,
+      username: user.fullName,
+      message: message.message,
+      timestamp: new Date().toISOString()
+    };
+
+    const result = await this.chatMessages.insertOne(chatMessage);
+    
+    const newMessage: ChatMessage = {
+      id: result.insertedId,
+      ...chatMessage
+    };
+
+    // Broadcast the message to all connected clients
+    if (this.broadcastMessage) {
+      this.broadcastMessage(newMessage);
+    }
+
+    return newMessage;
+  }
 }
 
 // In-memory Storage implementation for fallback
@@ -816,6 +871,14 @@ export class MemStorage implements IStorage {
 
   async getAllScores(): Promise<Score[]> {
     return []; // MemStorage doesn't support scores
+  }
+
+  async getChatMessages(): Promise<ChatMessage[]> {
+    return []; // MemStorage doesn't support chat messages
+  }
+
+  async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
+    throw new Error('Chat messages not supported in MemStorage');
   }
 }
 

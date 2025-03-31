@@ -117,3 +117,16 @@ export const loginSchema = userSchema.pick({
 });
 
 export type LoginData = z.infer<typeof loginSchema>;
+
+export interface ChatMessage {
+  id: number;
+  userId: number;
+  username: string;
+  message: string;
+  timestamp: string;
+}
+
+export interface InsertChatMessage {
+  userId: number;
+  message: string;
+}
